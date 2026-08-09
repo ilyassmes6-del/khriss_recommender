@@ -1,0 +1,8 @@
+# Shopify theme app extension manifest.
+# Deploy with:  shopify app deploy   (from the parent app project)
+api_version = "2024-04"
+
+[[extensions]]
+type = "theme"
+name = "khriss-recommender"
+handle = "khriss-recommender"

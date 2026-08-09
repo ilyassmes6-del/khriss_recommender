@@ -1,0 +1,77 @@
+.khriss {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  font-family: inherit;
+}
+.khriss__heading { margin: 0 0 0.25rem; font-size: 1.6rem; }
+.khriss__sub { margin: 0 0 1.25rem; opacity: 0.75; }
+
+.khriss__upload { display: inline-block; }
+.khriss__upload-btn {
+  display: inline-block;
+  padding: 0.7rem 1.4rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.khriss__upload-btn:hover { opacity: 0.8; }
+
+.khriss__preview { margin: 1rem 0; }
+.khriss__preview-img {
+  max-height: 200px;
+  /* Override the placeholder width/height attributes on the tag so the
+     uploaded image keeps its own aspect ratio. */
+  width: auto;
+  height: auto;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.khriss__status { margin: 1rem 0; font-weight: 600; }
+
+.khriss__tabs { display: flex; gap: 0.5rem; margin: 0.5rem 0 1rem; }
+.khriss__tab {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid rgba(0,0,0,0.2);
+  background: transparent;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.khriss__tab.is-active { background: #111; color: #fff; border-color: #111; }
+
+.khriss__results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1.25rem;
+}
+.khriss__card { display: flex; flex-direction: column; gap: 0.4rem; }
+.khriss__card-link { text-decoration: none; color: inherit; }
+.khriss__card-img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #f2f2f2;
+}
+.khriss__card-title { font-size: 0.9rem; font-weight: 600; margin-top: 0.4rem; }
+.khriss__card-price { font-size: 0.9rem; opacity: 0.8; }
+.khriss__rationale {
+  font-size: 0.82rem;
+  font-style: italic;
+  opacity: 0.85;
+  margin: 0.2rem 0 0;
+}
+.khriss__add {
+  margin-top: auto;
+  padding: 0.5rem 0.8rem;
+  border: none;
+  border-radius: 8px;
+  background: #111;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+}
+.khriss__add:disabled { opacity: 0.5; cursor: default; }
+.khriss__empty { opacity: 0.7; }

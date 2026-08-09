@@ -1,0 +1,80 @@
+{% comment %}
+  khriss AI shoe recommender — theme app block.
+
+  Merchants drop this block onto any page in the theme editor and set the API
+  base URL (the deployed khriss service). The block renders an upload widget
+  with a client-side preview; results come back from POST {api}/recommend.
+{% endcomment %}
+
+<div
+  class="khriss"
+  data-khriss-api="{{ block.settings.api_url }}"
+  data-khriss-heading="{{ block.settings.heading | escape }}"
+>
+  <h2 class="khriss__heading">{{ block.settings.heading }}</h2>
+  <p class="khriss__sub">{{ block.settings.subheading }}</p>
+
+  <label class="khriss__upload">
+    <input type="file" accept="image/*" class="khriss__file" hidden />
+    <span class="khriss__upload-btn">{{ block.settings.button_label }}</span>
+  </label>
+
+  <div class="khriss__preview" hidden>
+    {% comment %}
+      width/height are a 1:1 placeholder ratio only: the real dimensions come
+      from the file the shopper picks. CSS below resets both to auto, so these
+      just reserve space before load and satisfy theme-check.
+    {% endcomment %}
+    <img class="khriss__preview-img" alt="your upload" width="200" height="200" />
+  </div>
+
+  <div class="khriss__status" hidden></div>
+
+  {% comment %} Tabs shown only when detection is ambiguous. {% endcomment %}
+  <div class="khriss__tabs" hidden>
+    <button class="khriss__tab is-active" data-tab="outfit">Complete the look</button>
+    <button class="khriss__tab" data-tab="shoe">Similar shoes</button>
+  </div>
+
+  <div class="khriss__results" role="list"></div>
+</div>
+
+<script
+  src="{{ 'recommender.js' | asset_url }}"
+  defer
+></script>
+{{ 'recommender.css' | asset_url | stylesheet_tag }}
+
+{% schema %}
+{
+  "name": "khriss recommender",
+  "target": "section",
+  "settings": [
+    {
+      "type": "url",
+      "id": "api_url",
+      "label": "khriss API base URL",
+      "info": "e.g. https://recommender.yourdomain.com (no trailing slash)"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Find your shoes"
+    },
+    {
+      "type": "text",
+      "id": "subheading",
+      "label": "Subheading",
+      "default": "Upload an outfit or a shoe and we'll do the rest."
+    },
+    {
+      "type": "text",
+      "id": "button_label",
+      "label": "Upload button label",
+      "default": "Upload a photo"
+    }
+  ],
+  "presets": [{ "name": "khriss recommender" }]
+}
+{% endschema %}

@@ -1,0 +1,566 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{textcomp}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage[a4paper,left=3cm,right=3cm,top=2.8cm,bottom=2.8cm,headheight=14pt]{geometry}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage[hidelinks]{hyperref}
+
+\hypersetup{pdftitle={Recommandation de chaussures par photo},
+            pdfauthor={}, pdfsubject={}, pdfkeywords={}, pdfcreator={}, pdfproducer={}}
+
+% --- Titres : sobres, sans couleur ---
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.8em}{0.7em}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.6em}{}
+\titlespacing*{\subsection}{0pt}{1.3em}{0.4em}
+
+% --- En-tête / pied ---
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancyhead[L]{\footnotesize Recommandation de chaussures par photo}
+\fancyhead[R]{\footnotesize\thepage}
+
+\renewcommand{\arraystretch}{1.3}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+% --- Bloc de remarque : filets simples, pas d'encadré coloré ---
+\newenvironment{remarque}
+  {\par\vspace{0.9em}\noindent\rule{\linewidth}{0.4pt}\par\vspace{0.5em}
+   \begingroup\leftskip=1em\rightskip=1em}
+  {\par\endgroup\vspace{0.5em}\noindent\rule{\linewidth}{0.4pt}\par\vspace{0.9em}}
+
+\setlist[itemize]{leftmargin=1.3em,itemsep=0.3em,topsep=0.4em}
+\setlist[enumerate]{leftmargin=1.5em,itemsep=0.4em,topsep=0.4em}
+
+\begin{document}
+
+% =====================================================================
+\thispagestyle{empty}
+\vspace*{2cm}
+
+\noindent
+{\footnotesize NOTE TECHNIQUE ET BUDGÉTAIRE}
+
+\vspace{0.6cm}
+\noindent
+{\LARGE\bfseries Moteur de recommandation de chaussures par photo}
+
+\vspace{0.5cm}
+\noindent
+{\large Fonctionnement, technologies employées et coûts d'hébergement}
+
+\vspace{0.4cm}
+\noindent\rule{\linewidth}{0.4pt}
+
+\vspace{1.2cm}
+\noindent
+Le client de la boutique en ligne envoie une photo. Le système détermine s'il
+s'agit d'une chaussure ou d'une tenue, puis propose des articles du catalogue,
+en stock, avec lien vers la fiche produit et ajout au panier. Aucune image
+n'est générée : chaque proposition est l'une de vos propres photos produit.
+
+\vspace{0.8cm}
+\noindent
+Le présent document décrit le fonctionnement du système, les briques
+techniques qui le composent, la configuration serveur nécessaire, et le coût
+de fonctionnement mensuel selon que l'on conserve ou non le service d'IA de
+langage.
+
+\vspace{2cm}
+\noindent
+{\footnotesize 31 juillet 2026}
+
+\newpage
+
+{\small\tableofcontents}
+
+\newpage
+
+% =====================================================================
+\section{Les deux modes de fonctionnement}
+
+Le système répond à une question simple posée par le visiteur : \emph{j'aime
+cette photo, qu'avez-vous qui y ressemble, ou qui irait avec ?} Deux modes
+existent, choisis automatiquement selon la photo reçue.
+
+\vspace{0.5em}
+\begin{tabularx}{\textwidth}{L{3.2cm} X}
+\toprule
+\textbf{Photo reçue} & \textbf{Ce que voit le client} \\
+\midrule
+Une chaussure &
+Une grille de chaussures visuellement proches, classées par ressemblance.
+Chaque résultat est un produit réel du catalogue, en stock, cliquable. \\
+Une tenue &
+Trois chaussures qui complètent la tenue, chacune accompagnée d'une phrase de
+conseil rédigée par une IA de langage (\emph{« ce derby noir structure ce
+costume marine pour le bureau »}). \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1em}
+Ces deux modes n'ont pas le même coût de fonctionnement, et c'est le point
+déterminant pour le budget.
+
+Le mode chaussure vers chaussures similaires est \textbf{entièrement gratuit à
+l'usage}. Tout le calcul se fait sur votre serveur, sans appel à un service
+extérieur facturé. Que vos clients envoient cent ou cent mille photos par mois,
+la facture ne change pas.
+
+Le mode tenue vers chaussures assorties est \textbf{le seul poste facturé à la
+photo}, car c'est lui qui fait appel à l'IA de langage pour choisir les trois
+chaussures et rédiger les phrases de conseil. Ce coût reste faible : environ
+3~€ pour mille photos de tenues traitées.
+
+% =====================================================================
+\section{Comment fonctionne la partie gratuite}
+\label{sec:sansllm}
+
+C'est la partie qui fait la majorité du travail, et c'est celle qui ne coûte
+rien à l'usage. Elle mérite d'être comprise, parce qu'elle explique pourquoi le
+budget de ce projet est aussi contenu.
+
+\subsection{Le principe : une empreinte visuelle par photo}
+
+Imaginons que l'on puisse résumer n'importe quelle photo par une longue suite de
+chiffres, une sorte d'empreinte visuelle comparable à une empreinte digitale.
+Cette empreinte ne décrit pas la photo avec des mots ; elle capture sa signature
+visuelle : les formes, les matières, les couleurs, l'allure d'ensemble.
+
+La propriété utile est la suivante : deux photos qui se ressemblent produisent
+deux empreintes proches l'une de l'autre. Une botte noire en cuir photographiée
+de face et la même botte photographiée de trois quarts donnent des empreintes
+très voisines. Une basket blanche donnera une empreinte nettement plus éloignée.
+
+Un modèle de vision par ordinateur, installé une fois pour toutes sur le
+serveur, calcule ces empreintes. Il ne comprend pas au sens humain : il compare.
+Et il fonctionne en local, sans connexion à un service payant.
+
+\subsection{Ce qui se passe concrètement}
+
+\begin{enumerate}
+  \item \textbf{Une fois, à la mise en service.} On parcourt le catalogue.
+  Pour chaque photo de chaque produit, on calcule l'empreinte et on la range
+  dans une base spécialisée. Un même modèle photographié sous trois angles donne
+  trois empreintes qui pointent toutes vers la même fiche produit : c'est ce qui
+  rend la recherche insensible à l'angle de prise de vue.
+
+  \item \textbf{À chaque photo envoyée.} On calcule l'empreinte de la photo du
+  client, exactement de la même façon, puis on cherche les empreintes les plus
+  proches dans la base. Environ un dixième de seconde.
+
+  \item \textbf{On filtre et on affiche.} On ne retient que les produits en
+  stock, on évite de présenter six fois le même modèle dans six coloris, et on
+  affiche une grille cliquable.
+\end{enumerate}
+
+\subsection{Le même mécanisme rend trois autres services}
+
+\begin{itemize}
+  \item \textbf{Reconnaître le type de photo.} Le système compare l'empreinte
+  reçue à celle du concept « une chaussure » et à celle du concept « une tenue
+  portée ». La plus proche l'emporte. Si les deux sont trop serrées, la photo
+  est jugée ambiguë et la boutique affiche les deux résultats sous forme
+  d'onglets.
+
+  \item \textbf{Décrire les produits.} Le même mécanisme attribue à chaque
+  chaussure son type (botte, derby, basket\ldots), sa matière, ses couleurs
+  dominantes et un niveau d'habillement de 1 à 5. Ces étiquettes sont calculées
+  une fois à l'indexation, puis stockées.
+
+  \item \textbf{Préparer le travail de l'IA.} En mode tenue, ce sont ces filtres
+  gratuits qui ramènent le catalogue entier à une trentaine de candidats
+  pertinents. L'IA payante ne voit jamais tout le catalogue : elle reçoit une
+  courte liste déjà triée. C'est ce qui maintient son coût à un niveau
+  négligeable.
+\end{itemize}
+
+% =====================================================================
+\section{Ce qu'implique le retrait de l'IA de langage}
+\label{sec:retrait}
+
+Il est important d'être précis sur ce point, car la réponse est moins favorable
+qu'on pourrait le supposer.
+
+Dans l'état actuel du logiciel, l'IA de langage ne se contente pas de rédiger
+les phrases de conseil : c'est elle qui effectue la sélection finale des trois
+chaussures. Si la clé d'accès au service est retirée, l'appel échoue et l'erreur
+remonte jusqu'à la boutique.
+
+\begin{remarque}
+\noindent
+\textbf{Comportement réel sans clé d'accès}, vérifié dans le code :
+
+\vspace{0.4em}
+\begin{tabularx}{\linewidth}{L{4.2cm} X}
+Photo d'une chaussure & Fonctionne normalement. Aucune dégradation. \\
+Photo d'une tenue & \textbf{Message d'erreur} affiché au client. \\
+Photo ambiguë & \textbf{Message d'erreur}, alors même que les chaussures
+similaires avaient été calculées correctement. \\
+\end{tabularx}
+
+\vspace{0.6em}
+\noindent
+Autrement dit, retirer purement et simplement l'IA ne dégrade pas seulement le
+mode tenue : cela produit une erreur visible pour le client dès qu'une photo
+n'est pas clairement identifiée comme une chaussure.
+\end{remarque}
+
+Si l'objectif est de supprimer entièrement le coût variable, il ne faut donc pas
+se contenter de retirer la clé : il faut prévoir un développement
+complémentaire, à savoir intercepter l'échec de l'appel et faire retomber le
+mode tenue sur un classement purement visuel. Le client verrait alors des
+chaussures proposées, sans phrase de conseil, et aucune erreur ne s'afficherait.
+
+Ce développement représente environ une journée de travail. Il n'est pas
+réalisé aujourd'hui, et son coût doit être mis en regard de l'économie
+attendue, de l'ordre de quelques euros par mois (voir §\ref{sec:comparatif}).
+
+% =====================================================================
+\newpage
+\section{Les briques technologiques}
+
+Le système assemble six composants. Cinq sont des logiciels libres, gratuits et
+sans redevance, installés sur votre serveur. Un seul est un service extérieur
+facturé à l'usage.
+
+\vspace{0.6em}
+\begin{tabularx}{\textwidth}{L{2.9cm} X L{2.6cm}}
+\toprule
+\textbf{Composant} & \textbf{Rôle} & \textbf{Licence} \\
+\midrule
+
+Modèle de vision &
+Calcule les empreintes visuelles décrites au §\ref{sec:sansllm}. Assure la
+reconnaissance du type de photo, la description des produits et la mesure de
+ressemblance. Chargé une fois au démarrage et gardé en mémoire. &
+Gratuit \\
+
+Base d'empreintes &
+Stocke une empreinte par photo produit et retrouve les plus proches en quelques
+millisecondes. &
+Gratuit \\
+
+Base de données &
+Conserve les informations lisibles de chaque produit : titre, prix, lien,
+disponibilité, étiquettes calculées. Permet de filtrer par style, saison et
+prix. &
+Gratuit \\
+
+Serveur applicatif &
+Reçoit les photos, orchestre les étapes, renvoie les résultats. Comprend les
+garde-fous : limite de 5~Mo par image, rejet des fichiers non-image, limitation
+du nombre de requêtes par visiteur. &
+Gratuit \\
+
+Module boutique &
+Le bloc visible par vos clients : bouton d'envoi, aperçu, grille de résultats,
+onglets en cas de photo ambiguë, ajout au panier. S'installe dans le thème via
+l'éditeur de la plateforme. &
+Gratuit \\
+
+\midrule
+IA de langage &
+Le seul poste facturé à l'usage. Intervient uniquement en mode tenue : reçoit la
+trentaine de candidats pré-sélectionnés, choisit les trois meilleurs et rédige
+une phrase pour chacun. Un appel par photo de tenue. &
+À l'usage \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1em}
+Deux conséquences méritent d'être signalées.
+
+Le fournisseur d'IA est interchangeable. Passer à un autre modèle, moins cher ou
+plus performant, est un changement d'une ligne de configuration, sans
+réécriture.
+
+Aucune carte graphique n'est nécessaire. Le modèle de vision a été choisi pour
+tourner sur un processeur ordinaire, ce qui permet d'héberger l'ensemble sur un
+serveur à moins de dix euros par mois plutôt que sur une machine spécialisée à
+plusieurs centaines d'euros.
+
+% =====================================================================
+\section{Configuration d'hébergement}
+
+\subsection{Ce n'est pas la taille du catalogue qui dimensionne}
+
+Point contre-intuitif : pour un catalogue de moins de 500 produits, les données
+occupent une place négligeable, quelques mégaoctets d'empreintes et de fiches.
+Ce n'est donc pas le catalogue qui détermine le serveur à louer.
+
+Ce qui dimensionne, c'est la mémoire vive. Le modèle de vision doit rester
+chargé en permanence pour que les réponses soient instantanées, ce qui mobilise
+de l'ordre de 1~Go, auxquels s'ajoutent les deux bases de données et le système.
+Il faut également de l'espace disque pour l'image logicielle, qui embarque la
+bibliothèque de calcul et les poids du modèle.
+
+\vspace{0.6em}
+\begin{tabularx}{\textwidth}{L{3.8cm} L{3.2cm} X}
+\toprule
+\textbf{Ressource} & \textbf{Recommandation} & \textbf{Justification} \\
+\midrule
+Mémoire vive & 8 Go & 4 Go suffisent en théorie mais laissent peu de marge ;
+8 Go écarte tout risque d'arrêt en période de pointe. \\
+Processeur & 2 à 4 cœurs & Le calcul d'empreinte prend environ un dixième de
+seconde par image. \\
+Disque & 40 à 80 Go & Essentiellement pour l'image logicielle. \\
+Carte graphique & Aucune & Volontairement écarté à la conception. \\
+Système & Docker & L'ensemble se lance par une seule commande. \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1em}
+Les offres d'hébergement gratuites ou d'entrée de gamme (256~Mo à 1~Go de
+mémoire) sont insuffisantes : le service ne démarrera pas. Il faut un serveur
+privé virtuel classique, ce qui reste peu coûteux.
+
+\subsection{Deux formules}
+
+\begin{tabularx}{\textwidth}{L{3.6cm} X L{2.4cm}}
+\toprule
+\textbf{Formule} & \textbf{Description} & \textbf{Par mois} \\
+\midrule
+Serveur privé virtuel &
+Une machine louée chez un hébergeur européen, sur laquelle tout tourne.
+Configuration 4 cœurs / 8 Go / 80 Go. Nécessite une mise en place initiale et
+des mises à jour occasionnelles. \emph{Formule retenue pour les calculs qui
+suivent.} &
+8 à 11 € \\
+\addlinespace
+Plateforme managée &
+L'hébergeur assure les mises à jour, les sauvegardes et la surveillance. Plus
+confortable, sensiblement plus cher, souvent facturé par composant. &
+25 à 60 € \\
+\bottomrule
+\end{tabularx}
+
+\vspace{0.8em}
+\noindent
+{\small Tarifs relevés le 31 juillet 2026 auprès d'hébergeurs européens pour une
+configuration 4 cœurs / 8 Go / 80 Go, soit 8,49~€ à 10,49~€ hors taxes par mois
+selon le type de processeur. Ces tarifs ont augmenté en juin 2026 et sont à
+revérifier au moment de la commande. Les chiffres des sections suivantes
+retiennent une hypothèse de \textbf{9~€ par mois}, à laquelle s'ajoute environ
+1~€ pour le nom de domaine et le certificat de sécurité.}
+
+% =====================================================================
+\newpage
+\section{Coût de l'IA de langage}
+\label{sec:llm}
+
+\subsection{Mode de calcul}
+
+L'IA est facturée à la quantité de texte échangée, et non au nombre de
+requêtes. Elle ne reçoit ni la photo, ni le catalogue complet : elle reçoit une
+courte liste de texte, une trentaine de chaussures déjà pré-sélectionnées par la
+partie gratuite, réduites à leurs seules caractéristiques utiles (type, matière,
+couleurs, prix). Elle renvoie trois identifiants et trois phrases. L'échange est
+donc volontairement minuscule.
+
+\vspace{0.6em}
+\begin{tabularx}{\textwidth}{X L{3.4cm} L{2.4cm}}
+\toprule
+\textbf{Élément} & \textbf{Volume} & \textbf{Coût} \\
+\midrule
+Texte envoyé (tenue + 30 candidats) & environ 2\,100 unités & 0,0019 € \\
+Texte renvoyé (3 choix + phrases) & environ 200 unités & 0,0009 € \\
+\midrule
+\textbf{Total par photo de tenue} & & \textbf{0,003 €} \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1em}
+Soit environ 3~€ pour mille photos de tenues traitées. Les photos de chaussures
+ne déclenchent aucun appel et ne coûtent rien.
+
+\subsection{Projection sur trois niveaux d'activité}
+
+L'hypothèse retenue est que 40~\% des photos envoyées sont des tenues et 60~\%
+des chaussures, répartition prudente pour une boutique de chaussures où l'usage
+« je photographie une chaussure qui me plaît » domine généralement. Le serveur
+est compté à 9~€ par mois.
+
+\vspace{0.6em}
+\begin{tabularx}{\textwidth}{L{3.4cm} L{2.6cm} L{2.8cm} X}
+\toprule
+\textbf{Photos / mois} & \textbf{Dont tenues} & \textbf{Coût IA} &
+\textbf{Serveur + IA} \\
+\midrule
+500 & 200 & 0,60 € & 9,60 € \\
+2\,000 & 800 & 2,40 € & 11,40 € \\
+10\,000 & 4\,000 & 12,00 € & 21,00 € \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1em}
+Le coût de l'IA reste marginal même à fort trafic : multiplier l'activité par
+vingt ne multiplie la facture totale que par deux, parce que le serveur, poste
+principal, est un forfait fixe.
+
+Ce projet ne présente donc pas de risque de dérapage budgétaire lié au succès.
+C'est une conséquence directe du choix d'architecture : faire porter l'essentiel
+du travail par des logiciels gratuits tournant en local, et réserver l'IA payante
+à une seule étape, sur une liste déjà réduite.
+
+% =====================================================================
+\section{Comparatif : avec et sans IA de langage}
+\label{sec:comparatif}
+
+\begin{tabularx}{\textwidth}{L{4.4cm} X X}
+\toprule
+& \textbf{Avec IA} & \textbf{Sans IA} \\
+\midrule
+Photo d'une chaussure & Chaussures similaires & Identique \\
+Photo d'une tenue & 3 chaussures + conseil & Erreur, sauf développement
+complémentaire \\
+Photo ambiguë & Deux onglets & Erreur, sauf développement complémentaire \\
+Reconnaissance du type & Incluse, gratuite & Incluse, gratuite \\
+Description du catalogue & Incluse, gratuite & Incluse, gratuite \\
+\midrule
+Serveur et domaine & 10 € / mois & 10 € / mois \\
+IA, selon le trafic & 0,60 à 12 € / mois & 0 € \\
+\midrule
+\textbf{Total mensuel} & \textbf{10,60 à 22 € / mois} & \textbf{10 € / mois} \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1.2em}
+L'écart entre les deux formules correspond exactement au poste IA, soit
+\textbf{0,60 à 12~€ par mois} selon le trafic.
+
+Cette économie est à mettre en regard de deux éléments. D'une part, le mode
+tenue est précisément l'argument qui distingue ce système d'un moteur de
+recherche classique. D'autre part, le retrait de l'IA suppose une journée de
+développement complémentaire (§\ref{sec:retrait}) pour éviter d'afficher des
+erreurs aux clients, ce qui annule à lui seul plusieurs années d'économie au
+niveau de trafic le plus bas.
+
+\vspace{0.5em}
+\noindent
+\textbf{Recommandation : conserver l'IA de langage.} Si le budget doit être
+contenu, les leviers pertinents sont ailleurs :
+
+\begin{itemize}
+  \item conserver la description gratuite du catalogue plutôt que la variante
+  payante (§\ref{sec:ponctuels}) ;
+  \item conserver le modèle d'IA économique configuré par défaut, qui suffit
+  largement pour rédiger une phrase de conseil ;
+  \item choisir la formule serveur privé virtuel plutôt que la plateforme
+  managée, si vous disposez d'un interlocuteur technique.
+\end{itemize}
+
+% =====================================================================
+\newpage
+\section{Coûts ponctuels de mise en service}
+\label{sec:ponctuels}
+
+\begin{tabularx}{\textwidth}{L{4.6cm} X L{2.2cm}}
+\toprule
+\textbf{Poste} & \textbf{Détail} & \textbf{Coût} \\
+\midrule
+Indexation initiale &
+Parcours de tous les produits pour calculer et stocker les empreintes. Pour
+moins de 500 produits : moins de cinq minutes de traitement. &
+0 € \\
+\addlinespace
+Description enrichie \newline (option) &
+Variante payante faisant décrire chaque produit par une IA plutôt que par le
+modèle de vision gratuit. Étiquettes légèrement plus fines, à refacturer à
+chaque réindexation complète. Non recommandé. &
+0,50 € \\
+\addlinespace
+Mise en ligne &
+Location du serveur, installation, mise en place du bloc dans le thème,
+connexion au catalogue. &
+Prestation \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1em}
+Le catalogue se met ensuite à jour automatiquement : toute modification d'un
+produit dans l'administration de la boutique (prix, rupture de stock, nouvelle
+photo) est répercutée dans l'index dans la foulée, sans intervention et sans
+coût.
+
+% =====================================================================
+\section{Synthèse}
+
+\begin{remarque}
+\noindent
+\textbf{Budget de fonctionnement, catalogue de moins de 500 produits}
+
+\vspace{0.5em}
+\begin{tabularx}{\linewidth}{X L{4.4cm}}
+Serveur privé virtuel & 9 € / mois \\
+Nom de domaine et certificat & 1 € / mois \\
+IA de langage, selon le trafic & 0,60 à 12 € / mois \\
+Licences logicielles & 0 € \\
+\midrule
+\textbf{Total} & \textbf{10,60 à 22 € / mois} \\
+\end{tabularx}
+\end{remarque}
+
+Trois points à retenir.
+
+\begin{enumerate}
+  \item \textbf{Cinq des six composants sont libres et gratuits.} Aucune
+  redevance logicielle, aucun abonnement par utilisateur, aucun coût qui
+  augmente avec la taille du catalogue.
+
+  \item \textbf{La recherche par ressemblance visuelle ne coûte rien à
+  l'usage}, parce qu'elle repose sur un calcul local et non sur un service
+  extérieur. C'est le mode le plus sollicité sur une boutique de chaussures, et
+  c'est celui qui est gratuit.
+
+  \item \textbf{Le seul poste variable est plafonné par construction.} L'IA
+  n'intervient qu'une fois par photo de tenue, sur une liste de trente candidats
+  déjà filtrés. Même à dix mille photos par mois, elle reste du même ordre de
+  grandeur que le coût du serveur.
+\end{enumerate}
+
+% =====================================================================
+\vspace{1.5em}
+\section*{Hypothèses et sources}
+\addcontentsline{toc}{section}{Hypothèses et sources}
+
+{\small
+\begin{itemize}
+  \item Tarifs d'hébergement relevés le 31 juillet 2026 auprès d'hébergeurs
+  européens, configuration 4 cœurs / 8 Go de mémoire / 80 Go de disque, hors
+  taxes, soit 8,49~€ à 10,49~€ par mois. Ces tarifs ont fait l'objet d'une
+  hausse en juin 2026 et sont à revérifier au moment de la commande. Les
+  projections retiennent 9~€ par mois.
+
+  \item Tarif de l'IA de langage : 1~\$ par million d'unités reçues et 5~\$ par
+  million d'unités produites, tarif public du modèle économique configuré par
+  défaut, relevé le 31 juillet 2026. Conversion appliquée : 1~\$ = 0,92~€.
+
+  \item Volumes d'échange estimés à partir du contenu réel des requêtes du
+  système, soit environ 2\,100 unités reçues et 200 unités produites par photo
+  de tenue.
+
+  \item Répartition supposée du trafic : 40~\% de photos de tenues, 60~\% de
+  photos de chaussures. Une proportion de tenues plus faible réduirait
+  proportionnellement le coût variable.
+
+  \item Comportement décrit au §\ref{sec:retrait} en l'absence de clé d'accès :
+  vérifié par lecture du code source, et non estimé.
+
+  \item Catalogue de référence : moins de 500 produits, plusieurs photos par
+  produit. Un catalogue plus important allongerait l'indexation initiale mais ne
+  modifierait ni la configuration serveur ni le coût par photo.
+\end{itemize}
+}
+
+\end{document}

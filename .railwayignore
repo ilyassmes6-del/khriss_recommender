@@ -1,0 +1,17 @@
+# What `railway up` must never upload. Railway injects env vars from its own
+# dashboard, so .env has no business leaving this machine.
+.env
+.env.*
+!.env.example
+
+khriss-app/node_modules/
+.git/
+.claude/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+*.pdf
+.DS_Store

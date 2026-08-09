@@ -1,0 +1,30 @@
+# Keep secrets and bulk out of the build context. The image only needs
+# requirements.txt, app/ and indexer.py -- everything else is noise, and .env
+# would otherwise be readable by anyone who pulls the image.
+.env
+.env.*
+!.env.example
+
+# The Shopify CLI app that deploys the theme extension: not part of the API.
+khriss-app/
+theme-extension/
+
+# Local tooling and state
+.git/
+.claude/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+tests/
+scripts/
+
+# Docs and build artefacts
+*.pdf
+*.tex
+*.md
+Dockerfile
+docker-compose.yml
+.DS_Store

@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+.checkpoint.json
+index_checkpoint.json
+.DS_Store
+data/
+node_modules/
