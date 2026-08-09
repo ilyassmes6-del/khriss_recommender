@@ -82,6 +82,17 @@ class Settings(BaseSettings):
         postgres:// or postgresql:// URL. SQLAlchemy reads those as psycopg2,
         which we don't install -- so an untouched URL fails at engine creation.
         """
+        # An unresolvable ${{Service.DATABASE_URL}} reference is substituted
+        # with "" rather than left unset, which overrides the default above and
+        # surfaces as an opaque SQLAlchemy parse error at startup. Name it.
+        if not v.strip():
+            raise ValueError(
+                "DATABASE_URL is empty. On Railway this means the "
+                "${{Postgres.DATABASE_URL}} reference did not resolve -- check "
+                "that the Postgres service is named exactly as referenced, or "
+                "re-add it with the 'Add Reference' picker."
+            )
+
         for prefix in ("postgres://", "postgresql://"):
             if v.startswith(prefix):
                 return "postgresql+psycopg://" + v[len(prefix):]
