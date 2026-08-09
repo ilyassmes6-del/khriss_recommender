@@ -325,16 +325,25 @@ curl -s https://your-app.up.railway.app/health | jq
 
 Budget roughly **$10–20/month**. The driver is RAM, not traffic.
 
-**Give the service at least 2 GB, ideally 4 GB.** Measured peak during startup is
-**~1.2 GB** — that is CPU torch plus the OpenCLIP weights, before a single
-request is served; inference goes higher. Under that ceiling the container is
-OOM-killed part-way through loading the model, which shows up in the logs as a
-bare `Killed` right after the timm import warning, with no traceback. Railway's
-free trial caps memory below this; the Hobby plan does not.
+**Give the service at least 2 GB.** Measured against the real image, startup
+alone (CPU torch + the OpenCLIP weights, before serving anything):
 
-Setting `OMP_NUM_THREADS=1` trims torch's per-thread arenas somewhat, but it
-will not bring the footprint under a gigabyte — it is not a substitute for
-sizing the box correctly.
+| Container limit | Result |
+|---|---|
+| 1000 MB | OOM killed |
+| 1280 MB | OOM killed |
+| 1536 MB | boots |
+| 2048 MB | boots |
+
+So ~1.5 GB is the hard floor just to reach `Uvicorn running`; 2 GB leaves room
+for inference on top. Below it the container is killed part-way through loading
+the model and the only evidence is a bare `Killed` in the logs, right after the
+timm import warning, with no traceback — nothing names memory as the cause.
+
+`OMP_NUM_THREADS=1` does **not** rescue a 1 GB container; it was tested and
+still OOMs. Memory limits on Railway come from the plan attached to the
+*workspace* that owns the project, so upgrading a personal account does nothing
+for a project living in someone else's workspace.
 
 Expect a multi-minute first build. Don't put this on anything that scales to
 zero — every cold start reloads the model, and a shopper waits out that reload.
