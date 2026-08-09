@@ -323,10 +323,21 @@ curl -s https://your-app.up.railway.app/health | jq
 
 ### Cost and sizing
 
-Budget roughly **$10–20/month**. The driver is RAM, not traffic: the image bakes
-in CPU torch and loads OpenCLIP at startup, so expect ~1.5–2 GB resident and a
-multi-minute first build. Don't put this on anything that scales to zero — every
-cold start reloads the model, and a shopper waits out that reload.
+Budget roughly **$10–20/month**. The driver is RAM, not traffic.
+
+**Give the service at least 2 GB, ideally 4 GB.** Measured peak during startup is
+**~1.2 GB** — that is CPU torch plus the OpenCLIP weights, before a single
+request is served; inference goes higher. Under that ceiling the container is
+OOM-killed part-way through loading the model, which shows up in the logs as a
+bare `Killed` right after the timm import warning, with no traceback. Railway's
+free trial caps memory below this; the Hobby plan does not.
+
+Setting `OMP_NUM_THREADS=1` trims torch's per-thread arenas somewhat, but it
+will not bring the footprint under a gigabyte — it is not a substitute for
+sizing the box correctly.
+
+Expect a multi-minute first build. Don't put this on anything that scales to
+zero — every cold start reloads the model, and a shopper waits out that reload.
 
 ---
 
