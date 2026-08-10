@@ -44,13 +44,22 @@ class VectorStore:
                 collection_name=self.collection,
                 vectors_config=qm.VectorParams(size=dim, distance=qm.Distance.COSINE),
             )
-            # Payload indexes for filtered search.
-            for field, schema in [
-                ("in_stock", qm.PayloadSchemaType.BOOL),
-                ("type", qm.PayloadSchemaType.KEYWORD),
-                ("product_id", qm.PayloadSchemaType.KEYWORD),
-            ]:
+
+        # Payload indexes are ensured on every call, not just at creation: a
+        # collection built before a field existed would otherwise never get its
+        # index, and the filter would fall back to a full scan on exactly the
+        # deployment that already has data. Re-creating an existing index is a
+        # no-op, so this is safe to repeat.
+        for field, schema in [
+            ("in_stock", qm.PayloadSchemaType.BOOL),
+            ("type", qm.PayloadSchemaType.KEYWORD),
+            ("product_id", qm.PayloadSchemaType.KEYWORD),
+            ("category", qm.PayloadSchemaType.KEYWORD),
+        ]:
+            try:
                 self.client.create_payload_index(self.collection, field, schema)
+            except Exception:
+                pass  # already indexed
 
     @staticmethod
     def _point_id(product_id: str, image_index: int) -> str:
@@ -95,15 +104,24 @@ class VectorStore:
         limit: int,
         in_stock_only: bool = True,
         over_fetch: int = 4,
+        category: Optional[str] = None,
     ) -> list[tuple[str, float, dict]]:
-        """Return (product_id, score, payload), deduped to best vector/product."""
-        flt = None
+        """Return (product_id, score, payload), deduped to best vector/product.
+
+        `category` restricts the search to one slice of the index. Cosine
+        similarity across categories is close to meaningless -- a black bag and
+        a black shoe score highly on colour alone -- so callers scope it.
+        """
+        must = []
         if in_stock_only:
-            flt = qm.Filter(
-                must=[
-                    qm.FieldCondition(key="in_stock", match=qm.MatchValue(value=True))
-                ]
+            must.append(
+                qm.FieldCondition(key="in_stock", match=qm.MatchValue(value=True))
             )
+        if category:
+            must.append(
+                qm.FieldCondition(key="category", match=qm.MatchValue(value=category))
+            )
+        flt = qm.Filter(must=must) if must else None
         # Over-fetch because several vectors may map to one product.
         hits = self.client.search(
             self.collection,

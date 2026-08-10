@@ -83,11 +83,15 @@ class FakeVectorStore:
         recs = self._data.get(product_id)
         return recs[0][0] if recs else None
 
-    def search(self, query, limit, in_stock_only=True, over_fetch=4):
+    def search(self, query, limit, in_stock_only=True, over_fetch=4, category=None):
         best: dict[str, tuple[float, dict]] = {}
         for pid, recs in self._data.items():
             for vec, payload in recs:
                 if in_stock_only and not payload.get("in_stock", True):
+                    continue
+                # Mirrors the Qdrant payload filter: retrieval scopes every
+                # search to one category so types never rank against each other.
+                if category and payload.get("category") != category:
                     continue
                 score = float(np.asarray(query, dtype="float32") @ vec)
                 if pid not in best or score > best[pid][0]:
@@ -147,7 +151,7 @@ class FakeLLM:
 # Fixture catalog: ~20 fake shoes across types/colours/formality/season.
 # Each product's image concepts drive the fake embedder deterministically.
 # ---------------------------------------------------------------------------
-def _p(pid, title, concepts, price, in_stock=True):
+def _p(pid, title, concepts, price, in_stock=True, category="shoes"):
     key = f"img-{pid}"
     return {
         "product": {
@@ -155,6 +159,9 @@ def _p(pid, title, concepts, price, in_stock=True):
             "handle": title.lower().replace(" ", "-"),
             "title": title,
             "product_type": "Shoes",
+            # Set from Shopify's product_type in production; the indexer skips
+            # products without one rather than guessing the category.
+            "category": category,
             "tags": [],
             "images": [key],
             "price": price,

@@ -22,20 +22,27 @@ from app.config import settings
 from app.models import OutfitAttributes, ProductResult, RankerResponse
 
 _SYSTEM = (
-    "You are a fashion stylist for a shoe store. You recommend in-stock shoes "
-    "from a fixed candidate list that best complete a shopper's outfit. Enforce "
-    "colour harmony and formality consistency: the shoe's formality must sit "
-    "close to the outfit's, and its colours must harmonise with the outfit's "
-    "palette. You never invent product IDs — you only choose from the list. "
-    "Respond with STRICT JSON and no prose."
+    "You are a fashion stylist for a boutique selling shoes, handbags and "
+    "jewellery. From a fixed candidate list you assemble one complete look for "
+    "the shopper's outfit. Enforce colour harmony and formality consistency: "
+    "each piece's formality must sit close to the outfit's, and its colours "
+    "must harmonise with the outfit's palette. You never invent product IDs — "
+    "you only choose from the list. "
+    "Write every rationale in FRENCH, addressing the shopper directly, in one "
+    "natural sentence. Respond with STRICT JSON and no prose."
 )
 
+# One piece per category rather than the three best overall: the catalog is
+# ~320 shoes to 11 bags, so an unconstrained pick is three pairs of shoes and
+# "compléter le look" stops meaning anything.
 _SCHEMA_HINT = (
     'Return exactly this shape:\n'
     '{"ranked": [{"product_id": "<id from list>", '
-    '"rationale": "<one shopper-facing sentence>", '
+    '"rationale": "<une phrase en français, adressée au client>", '
     '"coherence": <number 0..1>}]}\n'
-    "Include at most 3 items, best first."
+    "Choose AT MOST ONE item per category, and prefer covering every category "
+    "that appears in the list (shoes, bags, jewelry). At most 3 items, best "
+    "first. The rationale must be in French."
 )
 
 
@@ -66,10 +73,19 @@ def rank_outfit(
         return []  # give up gracefully rather than surface garbage
 
     results: list[ProductResult] = []
+    seen_categories: set[str] = set()
     for item in parsed.ranked:
         if item.product_id not in valid_ids:
             continue  # drop hallucinated IDs
         c = by_id[item.product_id]
+        # The prompt asks for one piece per category; enforce it here too,
+        # because a model that ignores the instruction would otherwise return
+        # three pairs of shoes and call it a complete look.
+        cat = c.get("category")
+        if cat and cat in seen_categories:
+            continue
+        if cat:
+            seen_categories.add(cat)
         results.append(
             ProductResult(
                 product_id=item.product_id,
@@ -98,13 +114,16 @@ def _build_prompt(outfit: OutfitAttributes, candidates: list[dict]) -> str:
                     "product_id": c["product_id"],
                     "title": c["title"],
                     "price": c.get("price"),
+                    # The model needs the category to honour one-per-category.
+                    "category": c.get("category"),
                     "attributes": _slim_attrs(attrs),
                 }
             )
         )
     return (
         f"Outfit attributes:\n{json.dumps(outfit_json)}\n\n"
-        f"Candidate shoes (choose from these product_ids only):\n"
+        f"Candidate pieces, with their category "
+        f"(choose from these product_ids only):\n"
         + "\n".join(lines)
         + f"\n\n{_SCHEMA_HINT}"
     )

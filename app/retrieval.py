@@ -9,10 +9,10 @@ from __future__ import annotations
 import numpy as np
 from sqlalchemy import select
 
-from app import db
+from app import categories, db
 from app.clip_model import Embedder, get_embedder
 from app.config import settings
-from app.models import OutfitAttributes, ProductResult, ShoeAttributes
+from app.models import ItemAttributes, OutfitAttributes, ProductResult
 from app.qdrant_store import VectorStore, get_store
 
 
@@ -21,18 +21,26 @@ from app.qdrant_store import VectorStore, get_store
 # ---------------------------------------------------------------------------
 def similar_shoes(
     image_bytes: bytes,
-    query_attrs: ShoeAttributes,
+    query_attrs: ItemAttributes,
     store: VectorStore | None = None,
     embedder: Embedder | None = None,
     query_vec=None,
+    category: str | None = None,
 ) -> list[ProductResult]:
     store = store or get_store()
     embedder = embedder or get_embedder()
     if query_vec is None:
         query_vec = embedder.embed_image(image_bytes)
 
-    # Over-fetch so the same-type boost can reorder without starving the top-12.
-    hits = store.search(query_vec, limit=settings.mode_b_top_k * 2, in_stock_only=True)
+    # Scope to the uploaded item's own category. Cross-category cosine is
+    # dominated by colour -- a black clutch and a black boot look "similar" to
+    # CLIP -- so an unscoped search returns a grid nobody asked for.
+    hits = store.search(
+        query_vec,
+        limit=settings.mode_b_top_k * 2,
+        in_stock_only=True,
+        category=category,
+    )
 
     query_type = query_attrs.type_value()
     scored: list[tuple[float, str, dict]] = []
@@ -70,15 +78,9 @@ def outfit_candidates(
     compatible_seasons = _season_matches(outfit.season.value if outfit.season else None)
 
     with db.get_session() as session:
-        stmt = (
-            select(db.Product)
-            .where(db.Product.in_stock.is_(True))
-            .where(db.Product.formality >= lo)
-            .where(db.Product.formality <= hi)
-        )
-        if compatible_seasons:
-            stmt = stmt.where(db.Product.season.in_(compatible_seasons))
-        rows = session.scalars(stmt).all()
+        rows = []
+        for cat in categories.CATEGORIES:
+            rows.extend(_category_rows(session, cat, lo, hi, compatible_seasons))
         # Detach the fields we need before the session closes.
         candidates = [_row_to_candidate(r) for r in rows]
 
@@ -90,7 +92,47 @@ def outfit_candidates(
     outfit_vec = image_vec if image_vec is not None else embedder.embed_image(image_bytes)
     candidates = _rank_by_vector(candidates, outfit_vec, store)
     candidates = _diversify(candidates, store)
-    return candidates[: settings.mode_a_candidate_pool]
+
+    # Balance the shortlist across categories. A flat top-N would be all shoes:
+    # the catalog is 320 shoes to 11 bags, so bags and jewellery would never
+    # reach the ranker and "complete the look" could never return one of each.
+    per_category = max(1, settings.mode_a_candidate_pool // len(categories.CATEGORIES))
+    picked: list[dict] = []
+    for cat in categories.CATEGORIES:
+        picked.extend([c for c in candidates if c.get("category") == cat][:per_category])
+    return picked
+
+
+def _category_rows(session, category: str, lo: int, hi: int, seasons):
+    """In-stock products for one category, relaxing filters if they empty it.
+
+    The formality window and season match were tuned against a catalog of 320
+    shoes. Applied to 11 handbags they routinely match nothing, and the
+    balanced shortlist below would then silently contain no bag at all --
+    "compléter le look" degrading back to three pairs of shoes with no error
+    anywhere. Narrow first, widen only when a category would otherwise be
+    unrepresented.
+    """
+    base = select(db.Product).where(
+        db.Product.in_stock.is_(True), db.Product.category == category
+    )
+
+    stmt = base.where(db.Product.formality >= lo, db.Product.formality <= hi)
+    if seasons:
+        stmt = stmt.where(db.Product.season.in_(seasons))
+    rows = session.scalars(stmt).all()
+    if rows:
+        return rows
+
+    # Drop the season constraint before the formality one: wearing a summer bag
+    # in autumn reads as a smaller mistake than a black-tie clutch with jeans.
+    rows = session.scalars(
+        base.where(db.Product.formality >= lo, db.Product.formality <= hi)
+    ).all()
+    if rows:
+        return rows
+
+    return session.scalars(base).all()
 
 
 def _rank_by_vector(
@@ -137,6 +179,7 @@ def _row_to_candidate(r: db.Product) -> dict:
         "price": r.price,
         "image_url": r.image_url,
         "variant_id": r.variant_id,
+        "category": r.category,
         "attributes": r.attributes or {},
     }
 

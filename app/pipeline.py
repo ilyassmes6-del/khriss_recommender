@@ -5,7 +5,7 @@ request never pays model-load cost. `warm_up()` is called once at startup.
 """
 from __future__ import annotations
 
-from app import ranker, retrieval
+from app import categories, ranker, retrieval
 from app.clip_model import get_embedder
 from app.extractor import get_extractor
 from app.models import RecommendResponse
@@ -44,8 +44,13 @@ def recommend(image_bytes: bytes, llm_client=None) -> RecommendResponse:
     extractor = get_extractor()
 
     if route.mode == "shoe":
-        attrs = extractor.extract_shoe(image_bytes, vec=vec)
-        results = retrieval.similar_shoes(image_bytes, attrs, query_vec=vec)
+        # "shoe" means "a single item" -- the router says which category it is,
+        # and both the vocabulary and the searched slice follow from that.
+        category = route.category or categories.SHOES
+        attrs = extractor.extract_item(image_bytes, category, vec=vec)
+        results = retrieval.similar_shoes(
+            image_bytes, attrs, query_vec=vec, category=category
+        )
         return RecommendResponse(
             mode="shoe",
             confidence=route.confidence,
@@ -65,9 +70,12 @@ def recommend(image_bytes: bytes, llm_client=None) -> RecommendResponse:
         )
 
     # Ambiguous -> run both paths, storefront renders tabs.
-    shoe_attrs = extractor.extract_shoe(image_bytes, vec=vec)
+    category = route.category or categories.SHOES
+    shoe_attrs = extractor.extract_item(image_bytes, category, vec=vec)
     outfit_attrs = extractor.extract_outfit(image_bytes, vec=vec)
-    shoe_results = retrieval.similar_shoes(image_bytes, shoe_attrs, query_vec=vec)
+    shoe_results = retrieval.similar_shoes(
+        image_bytes, shoe_attrs, query_vec=vec, category=category
+    )
     candidates = retrieval.outfit_candidates(outfit_attrs, image_bytes, image_vec=vec)
     outfit_results = ranker.rank_outfit(outfit_attrs, candidates, client=llm_client)
     return RecommendResponse(

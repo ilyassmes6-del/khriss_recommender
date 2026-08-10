@@ -38,12 +38,16 @@ def _run_index(resume: bool) -> None:
         bar.update(1)
 
     start = time.time()
-    stats = indexer.run(shop.iter_products(), resume=resume, progress=progress)
+    # Only a full pass sees the whole feed, so only a full pass may delete.
+    stats = indexer.run(
+        shop.iter_products(), resume=resume, progress=progress, prune=not resume
+    )
     bar.close()
     elapsed = time.time() - start
     print(
         f"done in {elapsed:.1f}s | indexed={stats.indexed} "
-        f"skipped_no_image={stats.skipped_no_image} failed={stats.failed}"
+        f"skipped={stats.skipped_no_image} failed={stats.failed} "
+        f"pruned={stats.pruned}"
     )
 
 

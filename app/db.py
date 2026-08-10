@@ -8,7 +8,17 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import JSON, Boolean, Integer, String, Text, create_engine, select
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Integer,
+    String,
+    Text,
+    create_engine,
+    inspect,
+    select,
+    text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from app.config import settings
@@ -26,6 +36,9 @@ class Product(Base):
     title: Mapped[str] = mapped_column(Text)
     price: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     product_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # shoes | bags | jewelry, from app.categories. Indexed: every retrieval
+    # path filters on it so categories never get scored against each other.
+    category: Mapped[Optional[str]] = mapped_column(String, index=True, nullable=True)
     variant_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     in_stock: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
@@ -59,6 +72,28 @@ def get_session() -> Session:
 
 def init_db() -> None:
     Base.metadata.create_all(get_engine())
+    _ensure_category_column()
+
+
+def _ensure_category_column() -> None:
+    """Add `category` to a products table that predates it.
+
+    create_all() creates missing tables but never alters existing ones, so a
+    database populated before this column existed would fail every query
+    against it. One nullable column does not justify pulling in Alembic;
+    revisit if a second migration ever shows up.
+    """
+    engine = get_engine()
+    insp = inspect(engine)
+    if "products" not in insp.get_table_names():
+        return  # create_all just made it, with the column
+    if any(c["name"] == "category" for c in insp.get_columns("products")):
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE products ADD COLUMN category VARCHAR"))
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_products_category ON products (category)")
+        )
 
 
 def upsert_product(session: Session, **fields) -> None:

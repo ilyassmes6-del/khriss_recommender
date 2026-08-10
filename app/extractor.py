@@ -22,7 +22,7 @@ import numpy as np
 from app import labels
 from app.clip_model import Embedder, get_embedder
 from app.config import settings
-from app.models import LabeledAxis, OutfitAttributes, ShoeAttributes
+from app.models import ItemAttributes, LabeledAxis, OutfitAttributes, ShoeAttributes
 
 
 class AttributeExtractor(Protocol):
@@ -32,6 +32,10 @@ class AttributeExtractor(Protocol):
     def extract_shoe(self, image_bytes: bytes, vec=None) -> ShoeAttributes: ...
 
     def extract_outfit(self, image_bytes: bytes, vec=None) -> OutfitAttributes: ...
+
+    def extract_item(
+        self, image_bytes: bytes, category: str, vec=None
+    ) -> ItemAttributes: ...
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +85,10 @@ class ClipExtractor:
         self._outfit_multi = _LabelBank(
             self.embedder, labels.OUTFIT_MULTI, labels.OUTFIT_TEMPLATES
         )
+        # Per-category banks are built lazily: a store with no jewellery should
+        # not pay to embed a jewellery vocabulary at every boot.
+        self._item_banks: dict[str, _LabelBank] = {}
+        self._item_multi_banks: dict[str, _LabelBank] = {}
 
     def _top_axis(self, bank: _LabelBank, axis: str, vec: np.ndarray) -> LabeledAxis:
         sims = bank.score_axis(axis, vec)
@@ -130,6 +138,59 @@ class ClipExtractor:
             dominant_colors=self._multi(self._shoe_multi, "dominant_colors", vec),
             style_tags=self._multi(self._shoe_multi, "style_tags", vec),
         )
+
+    def extract_item(
+        self, image_bytes: bytes, category: str, vec=None
+    ) -> ItemAttributes:
+        """Describe a single item using its own category's vocabulary.
+
+        Scoring a bracelet against the shoe schema returns a confident "mule",
+        which then drives retrieval. The schema is chosen by category, which
+        comes from Shopify's product_type rather than from CLIP.
+        """
+        if vec is None:
+            vec = self.embedder.embed_image(image_bytes)
+
+        bank = self._bank_for(category)
+        multi = self._multi_bank_for(category)
+        schema = labels.SCHEMA_BY_CATEGORY[category]
+        templates = labels.TEMPLATES_BY_CATEGORY[category]
+
+        shared = {"type", "material", "pattern", "season"}
+        extras = {
+            axis: self._top_axis(bank, axis, vec)
+            for axis in schema
+            if axis not in shared
+        }
+        return ItemAttributes(
+            category=category,
+            type=self._top_axis(bank, "type", vec) if "type" in schema else None,
+            material=self._top_axis(bank, "material", vec) if "material" in schema else None,
+            pattern=self._top_axis(bank, "pattern", vec) if "pattern" in schema else None,
+            season=self._top_axis(bank, "season", vec) if "season" in schema else None,
+            formality=self._formality(vec, templates),
+            dominant_colors=self._multi(multi, "dominant_colors", vec),
+            style_tags=self._multi(multi, "style_tags", vec),
+            extras=extras,
+        )
+
+    def _bank_for(self, category: str) -> _LabelBank:
+        if category not in self._item_banks:
+            self._item_banks[category] = _LabelBank(
+                self.embedder,
+                labels.SCHEMA_BY_CATEGORY[category],
+                labels.TEMPLATES_BY_CATEGORY[category],
+            )
+        return self._item_banks[category]
+
+    def _multi_bank_for(self, category: str) -> _LabelBank:
+        if category not in self._item_multi_banks:
+            self._item_multi_banks[category] = _LabelBank(
+                self.embedder,
+                labels.MULTI_BY_CATEGORY[category],
+                labels.TEMPLATES_BY_CATEGORY[category],
+            )
+        return self._item_multi_banks[category]
 
     def extract_outfit(self, image_bytes: bytes, vec=None) -> OutfitAttributes:
         if vec is None:

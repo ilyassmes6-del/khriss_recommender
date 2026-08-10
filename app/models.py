@@ -37,6 +37,28 @@ class ShoeAttributes(BaseModel):
         return self.type.value if self.type else None
 
 
+class ItemAttributes(BaseModel):
+    """Attributes of any single catalog item, whatever its category.
+
+    The axes every category shares are named fields; the ones specific to one
+    category (a shoe's heel_height, a bag's hardware, a jewel's finish) land in
+    `extras`, so adding a category means editing app/labels.py and nothing here.
+    """
+
+    category: Optional[str] = None
+    type: Optional[LabeledAxis] = None
+    material: Optional[LabeledAxis] = None
+    pattern: Optional[LabeledAxis] = None
+    season: Optional[LabeledAxis] = None
+    formality: int = Field(ge=1, le=5, default=3)
+    dominant_colors: list[str] = Field(default_factory=list)
+    style_tags: list[str] = Field(default_factory=list)
+    extras: dict[str, LabeledAxis] = Field(default_factory=dict)
+
+    def type_value(self) -> Optional[str]:
+        return self.type.value if self.type else None
+
+
 class OutfitAttributes(BaseModel):
     silhouette: Optional[LabeledAxis] = None
     pattern: Optional[LabeledAxis] = None
@@ -76,6 +98,10 @@ class RouteResult(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     shoe_score: float
     outfit_score: float
+    # Which category the single-item reading landed on (shoes | bags |
+    # jewelry). None for a pure outfit. Retrieval scopes the index to it, so
+    # a bag is never ranked against a bracelet.
+    category: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

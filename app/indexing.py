@@ -29,6 +29,7 @@ class IndexStats:
     indexed: int = 0
     skipped_no_image: int = 0
     failed: int = 0
+    pruned: int = 0
 
 
 class Indexer:
@@ -51,16 +52,25 @@ class Indexer:
         if not images:
             return False
 
+        # An unmapped product_type means we cannot tell what this item is, and
+        # a mis-filed product pollutes results in both directions -- skip it
+        # rather than describe a handbag with the shoe vocabulary.
+        category = product.get("category")
+        if not category:
+            return False
+
         image_bytes = [self._download(u) for u in images]
         image_bytes = [b for b in image_bytes if b is not None]
         if not image_bytes:
             return False
 
-        # Attributes come from the first (primary) image.
-        attrs: ShoeAttributes = self.extractor.extract_shoe(image_bytes[0])
+        # Attributes come from the first (primary) image, read through the
+        # vocabulary for this item's own category.
+        attrs = self.extractor.extract_item(image_bytes[0], category)
         vectors = [self.embedder.embed_image(b) for b in image_bytes]
 
         payload = {
+            "category": category,
             "type": attrs.type_value(),
             "formality": attrs.formality,
             "season": attrs.season.value if attrs.season else None,
@@ -77,6 +87,7 @@ class Indexer:
                 title=product["title"],
                 price=product.get("price"),
                 product_type=product.get("product_type"),
+                category=category,
                 variant_id=product.get("variant_id"),
                 image_url=images[0],
                 in_stock=bool(product.get("in_stock", True)),
@@ -102,17 +113,21 @@ class Indexer:
         products,
         resume: bool = True,
         progress: Optional[Callable[[dict, bool], None]] = None,
+        prune: bool = False,
     ) -> IndexStats:
         stats = IndexStats()
         done = _load_checkpoint() if resume else set()
+        kept: set[str] = set()
         for product in products:
             pid = product["product_id"]
             if pid in done:
+                kept.add(pid)  # indexed on an earlier pass, still in the feed
                 continue
             try:
                 ok = self.index_product(product)
                 if ok:
                     stats.indexed += 1
+                    kept.add(pid)
                 else:
                     stats.skipped_no_image += 1
             except Exception:
@@ -124,7 +139,29 @@ class Indexer:
             _save_checkpoint(done)
             if progress:
                 progress(product, True)
+
+        if prune:
+            stats.pruned = self.prune(kept)
         return stats
+
+    def prune(self, keep_ids: set[str]) -> int:
+        """Delete indexed products that this run did not keep.
+
+        run() only ever upserts, so anything that leaves the catalog -- a
+        product switched to draft, deleted, or one we now skip because its
+        product_type maps to no category -- would otherwise stay searchable
+        forever. Only safe after a full pass, which sees the whole feed.
+        """
+        with db.get_session() as session:
+            existing = {p.product_id for p in session.query(db.Product).all()}
+            stale = existing - keep_ids
+            for pid in stale:
+                self.store.delete_product(pid)
+                obj = session.get(db.Product, pid)
+                if obj is not None:
+                    session.delete(obj)
+            session.commit()
+        return len(stale)
 
     def _download(self, url: str) -> Optional[bytes]:
         try:

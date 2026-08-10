@@ -18,6 +18,7 @@ from typing import Iterator, Optional
 
 import httpx
 
+from app import categories
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,9 @@ _REFRESH_MARGIN_SECONDS = 300
 
 _PRODUCTS_QUERY = """
 query Products($cursor: String) {
-  products(first: 250, after: $cursor) {
+  # status:active only. Drafts are not on the storefront, so recommending one
+  # sends the shopper to a dead link -- 188 of 479 products here were drafts.
+  products(first: 250, after: $cursor, query: "status:active") {
     pageInfo { hasNextPage endCursor }
     nodes {
       id
@@ -194,11 +197,15 @@ def normalize_product(node: dict) -> dict:
     price = chosen.get("price") if chosen else None
     variant_id = _numeric_id(chosen["id"]) if chosen else None
 
+    product_type = node.get("productType")
     return {
         "product_id": _numeric_id(node["id"]),
         "handle": node["handle"],
         "title": node["title"],
-        "product_type": node.get("productType"),
+        "product_type": product_type,
+        # Merchant-entered ground truth, not a CLIP guess. None = unmapped
+        # product_type; the indexer skips those rather than mis-file them.
+        "category": categories.from_product_type(product_type),
         "tags": node.get("tags", []),
         "images": images,
         "price": price,
