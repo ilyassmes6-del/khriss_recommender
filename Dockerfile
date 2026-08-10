@@ -13,7 +13,17 @@ RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/wh
     -r requirements.txt
 
 # Pre-download the OpenCLIP weights into the image so first request is warm.
-RUN python -c "import open_clip; open_clip.create_model_and_transforms('ViT-B-32', pretrained='laion2b_s34b_b79k')"
+# Pin the cache to an absolute path rather than letting it land in $HOME:
+# hosts that run the container with a different HOME miss the baked cache and
+# re-download ~578MB at every boot, which is slow and blows the memory ceiling.
+ENV HF_HOME=/opt/hf-cache
+RUN python -c "import open_clip; open_clip.create_model_and_transforms('ViT-B-32', pretrained='laion2b_s34b_b79k')" \
+    && test -d /opt/hf-cache/hub
+
+# With the weights proven present above, forbid the hub call entirely. Without
+# this, huggingface_hub still reaches out on every boot to revalidate the cache
+# -- latency at best, and a hang if the hub is slow or the network is locked.
+ENV HF_HUB_OFFLINE=1
 
 COPY app ./app
 COPY indexer.py ./indexer.py
