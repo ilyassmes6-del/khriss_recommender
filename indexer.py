@@ -82,6 +82,34 @@ def _dump(limit: int) -> None:
     print(f"\ndumped {shown} products (extractor={settings.extractor})")
 
 
+def _prune(dry_run: bool) -> None:
+    """Reconcile the index against the live catalog, without re-embedding.
+
+    A full pass prunes as it goes, but that means paying for the whole catalog
+    again just to drop what has left it. This walks the feed for ids only --
+    no image downloads, no CLIP -- so it finishes in seconds.
+    """
+    db.init_db()
+    shop = ShopifyClient()
+    indexer = Indexer()
+
+    live = {p["product_id"] for p in shop.iter_products() if p.get("category")}
+    with db.get_session() as session:
+        stored = {p.product_id for p in session.query(db.Product).all()}
+    stale = stored - live
+
+    print(f"live={len(live)} stored={len(stored)} stale={len(stale)}")
+    if not stale:
+        print("nothing to prune")
+        return
+    if dry_run:
+        print("dry run -- nothing deleted. Re-run without --dry-run to apply.")
+        return
+
+    removed = indexer.prune(live)
+    print(f"pruned {removed} products (rows + vectors)")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="khriss catalog indexer")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -90,6 +118,12 @@ def main() -> None:
     d = sub.add_parser("dump", help="print extracted attributes, write nothing")
     d.add_argument("--limit", type=int, default=10)
     sub.add_parser("reset", help="clear the resume checkpoint")
+    pr = sub.add_parser(
+        "prune", help="delete indexed products no longer live in the catalog"
+    )
+    pr.add_argument(
+        "--dry-run", action="store_true", help="report what would go, delete nothing"
+    )
 
     args = parser.parse_args()
     if args.cmd == "full":
@@ -99,6 +133,8 @@ def main() -> None:
         _run_index(resume=True)
     elif args.cmd == "dump":
         _dump(args.limit)
+    elif args.cmd == "prune":
+        _prune(dry_run=args.dry_run)
     elif args.cmd == "reset":
         clear_checkpoint()
         print("checkpoint cleared")
