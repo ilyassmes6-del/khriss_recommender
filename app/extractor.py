@@ -26,9 +26,12 @@ from app.models import LabeledAxis, OutfitAttributes, ShoeAttributes
 
 
 class AttributeExtractor(Protocol):
-    def extract_shoe(self, image_bytes: bytes) -> ShoeAttributes: ...
+    # `vec` lets a caller that has already embedded this image hand the vector
+    # in rather than paying for a second CLIP pass. One /recommend request
+    # touched the same image up to five times before this existed.
+    def extract_shoe(self, image_bytes: bytes, vec=None) -> ShoeAttributes: ...
 
-    def extract_outfit(self, image_bytes: bytes) -> OutfitAttributes: ...
+    def extract_outfit(self, image_bytes: bytes, vec=None) -> OutfitAttributes: ...
 
 
 # ---------------------------------------------------------------------------
@@ -112,8 +115,9 @@ class ClipExtractor:
                 best_sim, best_score = sim, score
         return best_score
 
-    def extract_shoe(self, image_bytes: bytes) -> ShoeAttributes:
-        vec = self.embedder.embed_image(image_bytes)
+    def extract_shoe(self, image_bytes: bytes, vec=None) -> ShoeAttributes:
+        if vec is None:
+            vec = self.embedder.embed_image(image_bytes)
         return ShoeAttributes(
             type=self._top_axis(self._shoe, "type", vec),
             material=self._top_axis(self._shoe, "material", vec),
@@ -127,8 +131,9 @@ class ClipExtractor:
             style_tags=self._multi(self._shoe_multi, "style_tags", vec),
         )
 
-    def extract_outfit(self, image_bytes: bytes) -> OutfitAttributes:
-        vec = self.embedder.embed_image(image_bytes)
+    def extract_outfit(self, image_bytes: bytes, vec=None) -> OutfitAttributes:
+        if vec is None:
+            vec = self.embedder.embed_image(image_bytes)
         return OutfitAttributes(
             silhouette=self._top_axis(self._outfit, "silhouette", vec),
             pattern=self._top_axis(self._outfit, "pattern", vec),
@@ -176,12 +181,12 @@ class LLMExtractor:
         )
         return _loads_json(text)
 
-    def extract_shoe(self, image_bytes: bytes) -> ShoeAttributes:
+    def extract_shoe(self, image_bytes: bytes, vec=None) -> ShoeAttributes:
         hint = _schema_prompt("shoe", labels.SHOE_SCHEMA, labels.SHOE_MULTI)
         raw = self._ask(image_bytes, hint)
         return _coerce_shoe(raw)
 
-    def extract_outfit(self, image_bytes: bytes) -> OutfitAttributes:
+    def extract_outfit(self, image_bytes: bytes, vec=None) -> OutfitAttributes:
         hint = _schema_prompt("outfit", labels.OUTFIT_SCHEMA, labels.OUTFIT_MULTI)
         raw = self._ask(image_bytes, hint)
         return _coerce_outfit(raw)

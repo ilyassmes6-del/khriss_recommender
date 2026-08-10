@@ -1,0 +1,23 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "6325dc4a42e9dadef4ec6ddd97b4b9ab"
+name = "maisonmasilya"
+# The storefront widget lives at the Python project root, not under
+# extensions/. `shopify app config link` regenerates this file from the remote
+# app and drops this line, so re-add it after any relink -- without it the
+# deploy silently ships an app with no extension.
+extension_directories = [ "extensions/*", "../theme-extension" ]
+application_url = "https://example.com"
+embedded = true
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_products"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [ ]
+
+[webhooks]
+api_version = "2026-07"

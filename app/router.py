@@ -32,8 +32,11 @@ class ModeRouter:
         self.shoe_vec = _mean_unit(shoe)
         self.outfit_vec = _mean_unit(outfit)
 
-    def route(self, image_bytes: bytes) -> RouteResult:
-        vec = self.embedder.embed_image(image_bytes)
+    def route(self, image_bytes: bytes, vec=None) -> RouteResult:
+        # Callers that already embedded this image pass `vec` in; see
+        # pipeline.recommend, which embeds once and shares it.
+        if vec is None:
+            vec = self.embedder.embed_image(image_bytes)
         shoe_sim = float(self.shoe_vec @ vec)
         outfit_sim = float(self.outfit_vec @ vec)
 

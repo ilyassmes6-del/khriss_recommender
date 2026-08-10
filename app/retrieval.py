@@ -24,10 +24,12 @@ def similar_shoes(
     query_attrs: ShoeAttributes,
     store: VectorStore | None = None,
     embedder: Embedder | None = None,
+    query_vec=None,
 ) -> list[ProductResult]:
     store = store or get_store()
     embedder = embedder or get_embedder()
-    query_vec = embedder.embed_image(image_bytes)
+    if query_vec is None:
+        query_vec = embedder.embed_image(image_bytes)
 
     # Over-fetch so the same-type boost can reorder without starving the top-12.
     hits = store.search(query_vec, limit=settings.mode_b_top_k * 2, in_stock_only=True)
@@ -54,6 +56,7 @@ def outfit_candidates(
     price_band: tuple[float, float] | None = None,
     store: VectorStore | None = None,
     embedder: Embedder | None = None,
+    image_vec=None,
 ) -> list[dict]:
     """Filtered, diversity-pruned shortlist for the ranker.
 
@@ -84,7 +87,7 @@ def outfit_candidates(
         candidates = [c for c in candidates if _price_in(c["price"], low, high)]
 
     # Rank the pool by visual affinity to the outfit, then prune near-duplicates.
-    outfit_vec = embedder.embed_image(image_bytes)
+    outfit_vec = image_vec if image_vec is not None else embedder.embed_image(image_bytes)
     candidates = _rank_by_vector(candidates, outfit_vec, store)
     candidates = _diversify(candidates, store)
     return candidates[: settings.mode_a_candidate_pool]

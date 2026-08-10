@@ -1,77 +1,267 @@
+/* khriss recommender — storefront widget.
+ *
+ * Colours are derived from the host theme (currentColor + a few tuned alphas)
+ * rather than hardcoded, so the block inherits the merchant's palette instead
+ * of fighting it.
+ */
 .khriss {
+  --khriss-radius: 14px;
+  --khriss-line: color-mix(in srgb, currentColor 14%, transparent);
+  --khriss-muted: color-mix(in srgb, currentColor 62%, transparent);
+  --khriss-surface: color-mix(in srgb, currentColor 4%, transparent);
+
   max-width: 1100px;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: 2.5rem 1.5rem;
   font-family: inherit;
 }
-.khriss__heading { margin: 0 0 0.25rem; font-size: 1.6rem; }
-.khriss__sub { margin: 0 0 1.25rem; opacity: 0.75; }
 
-.khriss__upload { display: inline-block; }
-.khriss__upload-btn {
-  display: inline-block;
-  padding: 0.7rem 1.4rem;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  cursor: pointer;
-  font-weight: 600;
+/* The hidden attribute must win over any display rule below it. Without this,
+   `display: flex` on .khriss__tabs silently defeats [hidden] and the tabs show
+   before there is anything to switch between. */
+.khriss [hidden] {
+  display: none !important;
 }
-.khriss__upload-btn:hover { opacity: 0.8; }
 
-.khriss__preview { margin: 1rem 0; }
+.khriss__intro {
+  margin-bottom: 1.5rem;
+}
+.khriss__heading {
+  margin: 0 0 0.4rem;
+  font-size: clamp(1.5rem, 1.2rem + 1.2vw, 2rem);
+  letter-spacing: -0.01em;
+}
+.khriss__sub {
+  margin: 0;
+  color: var(--khriss-muted);
+  max-width: 52ch;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------------- upload -- */
+.khriss__drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem 1.5rem;
+  border: 1.5px dashed var(--khriss-line);
+  border-radius: var(--khriss-radius);
+  background: var(--khriss-surface);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+.khriss__drop:hover,
+.khriss__drop:focus-visible,
+.khriss__drop.is-dragging {
+  border-color: currentColor;
+  background: color-mix(in srgb, currentColor 7%, transparent);
+}
+.khriss__drop.is-dragging {
+  transform: scale(1.005);
+}
+.khriss__drop-icon {
+  width: 28px;
+  height: 28px;
+  opacity: 0.7;
+}
+.khriss__drop-btn {
+  font-weight: 600;
+  font-size: 1rem;
+}
+.khriss__drop-hint {
+  font-size: 0.82rem;
+  color: var(--khriss-muted);
+}
+
+.khriss__preview {
+  margin: 1.25rem 0 0;
+}
 .khriss__preview-img {
-  max-height: 200px;
+  max-height: 190px;
   /* Override the placeholder width/height attributes on the tag so the
      uploaded image keeps its own aspect ratio. */
   width: auto;
   height: auto;
-  border-radius: 12px;
+  border-radius: var(--khriss-radius);
   object-fit: cover;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.1);
 }
 
-.khriss__status { margin: 1rem 0; font-weight: 600; }
+/* ---------------------------------------------------------------- status -- */
+.khriss__status {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 1.25rem 0 0.75rem;
+  font-weight: 600;
+}
+.khriss__status.is-busy::before {
+  content: "";
+  width: 15px;
+  height: 15px;
+  border: 2px solid var(--khriss-line);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: khriss-spin 0.7s linear infinite;
+  flex: none;
+}
+@keyframes khriss-spin {
+  to { transform: rotate(360deg); }
+}
 
-.khriss__tabs { display: flex; gap: 0.5rem; margin: 0.5rem 0 1rem; }
+/* ------------------------------------------------------------------ tabs -- */
+.khriss__tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0 0 1.25rem;
+  flex-wrap: wrap;
+}
 .khriss__tab {
-  padding: 0.4rem 0.9rem;
-  border: 1px solid rgba(0,0,0,0.2);
+  padding: 0.45rem 1rem;
+  border: 1px solid var(--khriss-line);
   background: transparent;
+  color: inherit;
   border-radius: 999px;
   cursor: pointer;
+  font: inherit;
+  font-size: 0.9rem;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
 }
-.khriss__tab.is-active { background: #111; color: #fff; border-color: #111; }
+.khriss__tab:hover {
+  border-color: currentColor;
+}
+.khriss__tab.is-active {
+  background: #111;
+  border-color: #111;
+  color: #fff;
+}
 
+/* --------------------------------------------------------------- results -- */
 .khriss__results {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 1.5rem 1.25rem;
 }
-.khriss__card { display: flex; flex-direction: column; gap: 0.4rem; }
-.khriss__card-link { text-decoration: none; color: inherit; }
+@media (max-width: 480px) {
+  .khriss__results {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem 0.75rem;
+  }
+}
+
+.khriss__card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.khriss__card-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+.khriss__card-media {
+  overflow: hidden;
+  border-radius: var(--khriss-radius);
+  background: var(--khriss-surface);
+}
 .khriss__card-img {
+  display: block;
   width: 100%;
   aspect-ratio: 1 / 1;
   object-fit: cover;
-  border-radius: 10px;
-  background: #f2f2f2;
+  transition: transform 0.35s ease;
 }
-.khriss__card-title { font-size: 0.9rem; font-weight: 600; margin-top: 0.4rem; }
-.khriss__card-price { font-size: 0.9rem; opacity: 0.8; }
+.khriss__card-link:hover .khriss__card-img {
+  transform: scale(1.04);
+}
+.khriss__card-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-top: 0.6rem;
+  line-height: 1.35;
+}
+.khriss__card-price {
+  font-size: 0.88rem;
+  color: var(--khriss-muted);
+  margin-top: 0.1rem;
+}
 .khriss__rationale {
   font-size: 0.82rem;
-  font-style: italic;
-  opacity: 0.85;
-  margin: 0.2rem 0 0;
+  line-height: 1.45;
+  color: var(--khriss-muted);
+  margin: 0.35rem 0 0;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--khriss-line);
 }
+
 .khriss__add {
   margin-top: auto;
-  padding: 0.5rem 0.8rem;
-  border: none;
-  border-radius: 8px;
-  background: #111;
-  color: #fff;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
   cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
   font-weight: 600;
+  transition: background 0.18s ease, opacity 0.18s ease;
 }
-.khriss__add:disabled { opacity: 0.5; cursor: default; }
-.khriss__empty { opacity: 0.7; }
+.khriss__add:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.khriss__add:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.khriss__add.is-added {
+  border-style: solid;
+  opacity: 0.75;
+}
+
+.khriss__empty {
+  color: var(--khriss-muted);
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+/* -------------------------------------------------------------- skeleton -- */
+.khriss__sk {
+  background: linear-gradient(
+    90deg,
+    var(--khriss-surface) 25%,
+    color-mix(in srgb, currentColor 9%, transparent) 37%,
+    var(--khriss-surface) 63%
+  );
+  background-size: 400% 100%;
+  animation: khriss-shimmer 1.3s ease infinite;
+  border-radius: 6px;
+}
+.khriss__sk-img {
+  aspect-ratio: 1 / 1;
+  border-radius: var(--khriss-radius);
+}
+.khriss__sk-line {
+  height: 11px;
+  margin-top: 0.55rem;
+}
+.khriss__sk-line--short {
+  width: 45%;
+}
+@keyframes khriss-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .khriss__sk,
+  .khriss__status.is-busy::before,
+  .khriss__card-img,
+  .khriss__drop {
+    animation: none;
+    transition: none;
+  }
+}

@@ -32,12 +32,20 @@ def _get_router() -> ModeRouter:
 
 
 def recommend(image_bytes: bytes, llm_client=None) -> RecommendResponse:
-    route = _get_router().route(image_bytes)
+    # One CLIP pass for the whole request. Routing, extraction and retrieval all
+    # score against the *same* image, so embedding per step meant up to five
+    # identical forward passes -- which on a shared vCPU was the entire wait.
+    # Borrow the router's embedder rather than the module singleton: it is the
+    # same object in production, and the one the tests already wire up.
+    router = _get_router()
+    vec = router.embedder.embed_image(image_bytes)
+
+    route = router.route(image_bytes, vec=vec)
     extractor = get_extractor()
 
     if route.mode == "shoe":
-        attrs = extractor.extract_shoe(image_bytes)
-        results = retrieval.similar_shoes(image_bytes, attrs)
+        attrs = extractor.extract_shoe(image_bytes, vec=vec)
+        results = retrieval.similar_shoes(image_bytes, attrs, query_vec=vec)
         return RecommendResponse(
             mode="shoe",
             confidence=route.confidence,
@@ -46,8 +54,8 @@ def recommend(image_bytes: bytes, llm_client=None) -> RecommendResponse:
         )
 
     if route.mode == "outfit":
-        attrs = extractor.extract_outfit(image_bytes)
-        candidates = retrieval.outfit_candidates(attrs, image_bytes)
+        attrs = extractor.extract_outfit(image_bytes, vec=vec)
+        candidates = retrieval.outfit_candidates(attrs, image_bytes, image_vec=vec)
         results = ranker.rank_outfit(attrs, candidates, client=llm_client)
         return RecommendResponse(
             mode="outfit",
@@ -57,10 +65,10 @@ def recommend(image_bytes: bytes, llm_client=None) -> RecommendResponse:
         )
 
     # Ambiguous -> run both paths, storefront renders tabs.
-    shoe_attrs = extractor.extract_shoe(image_bytes)
-    outfit_attrs = extractor.extract_outfit(image_bytes)
-    shoe_results = retrieval.similar_shoes(image_bytes, shoe_attrs)
-    candidates = retrieval.outfit_candidates(outfit_attrs, image_bytes)
+    shoe_attrs = extractor.extract_shoe(image_bytes, vec=vec)
+    outfit_attrs = extractor.extract_outfit(image_bytes, vec=vec)
+    shoe_results = retrieval.similar_shoes(image_bytes, shoe_attrs, query_vec=vec)
+    candidates = retrieval.outfit_candidates(outfit_attrs, image_bytes, image_vec=vec)
     outfit_results = ranker.rank_outfit(outfit_attrs, candidates, client=llm_client)
     return RecommendResponse(
         mode="both",
