@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import BackgroundTasks, FastAPI, File, Header, HTTPException, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
@@ -87,7 +88,12 @@ async def recommend(request: Request, image: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="empty upload")
 
     try:
-        result = pipeline.recommend(data)
+        # CLIP inference is blocking CPU work. Calling it directly from this
+        # coroutine stalls the whole event loop, so concurrent uploads (and
+        # /health, and CORS preflights) queue behind whichever one arrived
+        # first until the proxy times them out and returns 502 -- even though
+        # the app itself eventually answers every one of them with a 200.
+        result = await run_in_threadpool(pipeline.recommend, data)
     except Exception as exc:  # pragma: no cover - defensive
         raise HTTPException(status_code=500, detail=f"recommendation failed: {exc}")
     return result.model_dump(exclude_none=True)
