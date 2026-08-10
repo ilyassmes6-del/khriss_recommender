@@ -89,6 +89,7 @@ class ClipExtractor:
         # not pay to embed a jewellery vocabulary at every boot.
         self._item_banks: dict[str, _LabelBank] = {}
         self._item_multi_banks: dict[str, _LabelBank] = {}
+        self._formality_cache: dict[tuple, list] = {}
 
     def _top_axis(self, bank: _LabelBank, axis: str, vec: np.ndarray) -> LabeledAxis:
         sims = bank.score_axis(axis, vec)
@@ -107,17 +108,36 @@ class ClipExtractor:
                 out.append(bank.axes[axis][int(i)])
         return out
 
-    def _formality(self, vec: np.ndarray, templates: list[str]) -> int:
+    def _formality_anchors(self, templates: list[str]) -> list[tuple[int, np.ndarray]]:
+        """One unit vector per formality level, built once per template set.
+
+        These anchors depend only on the templates, never on the image, but
+        were being re-embedded on every product -- a text-encoder pass per
+        item, which is most of the per-product cost once the label banks are
+        warm.
+        """
+        key = tuple(templates)
+        cached = self._formality_cache.get(key)
+        if cached is not None:
+            return cached
+
         prompts, spans = [], []
         for score, desc in labels.FORMALITY_ANCHORS.items():
             start = len(prompts)
             prompts.extend(t.format(label=desc) for t in templates)
             spans.append((score, start, len(prompts)))
         text_vecs = self.embedder.embed_texts(prompts)
-        best_score, best_sim = 3, -1.0
+
+        anchors = []
         for score, s, e in spans:
-            anchor = text_vecs[s:e].mean(axis=0)
-            anchor = anchor / (np.linalg.norm(anchor) or 1.0)
+            a = text_vecs[s:e].mean(axis=0)
+            anchors.append((score, a / (np.linalg.norm(a) or 1.0)))
+        self._formality_cache[key] = anchors
+        return anchors
+
+    def _formality(self, vec: np.ndarray, templates: list[str]) -> int:
+        best_score, best_sim = 3, -1.0
+        for score, anchor in self._formality_anchors(templates):
             sim = float(anchor @ vec)
             if sim > best_sim:
                 best_sim, best_score = sim, score
