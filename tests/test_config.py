@@ -31,6 +31,12 @@ def test_sqlite_url_is_left_alone():
     assert Settings(database_url=url).database_url == url
 
 
+def test_empty_database_url_says_what_actually_went_wrong():
+    """Railway blanks an unresolvable reference; the default can't save us."""
+    with pytest.raises(ValueError, match="did not resolve"):
+        Settings(database_url="")
+
+
 def test_rewritten_url_resolves_a_driver_we_ship():
     """The string being right is not the point -- the dialect must import.
 
