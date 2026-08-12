@@ -82,6 +82,10 @@ class ProductResult(BaseModel):
     price: Optional[str] = None
     image_url: Optional[str] = None
     variant_id: Optional[str] = None
+    # Which catalog category this piece belongs to (shoes | bags | jewelry).
+    # The storefront groups outfit results into one row per category, so it
+    # needs the bucket on every card rather than inferring it from the title.
+    category: Optional[str] = None
     score: float = 0.0
     # Mode A only: one-sentence shopper-facing rationale.
     rationale: Optional[str] = None

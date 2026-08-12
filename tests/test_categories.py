@@ -3,7 +3,7 @@
 Three promises are under test here:
   * a product with no recognisable product_type is skipped, not guessed at;
   * "similar" only ever returns the uploaded item's own category;
-  * "complete the look" returns at most one piece per category.
+  * "complete the look" returns at most `_PER_CATEGORY` pieces per category.
 """
 from __future__ import annotations
 
@@ -116,7 +116,7 @@ def test_similar_search_unscoped_would_cross_categories(mixed):
 
 
 # ---------------------------------------------------------------------------
-# One piece per category
+# A few pieces per category (capped)
 # ---------------------------------------------------------------------------
 def _candidate(pid, category):
     return {
@@ -131,23 +131,26 @@ def _candidate(pid, category):
     }
 
 
-def test_ranker_keeps_at_most_one_item_per_category():
-    """A model that returns three shoes must still yield one look, not three shoes."""
+def test_ranker_caps_items_per_category():
+    """A model that returns four shoes must still yield at most _PER_CATEGORY
+    shoes, so the look never degrades into a pile of one category."""
     from app.models import OutfitAttributes
 
     candidates = [
         _candidate("s1", categories.SHOES),
         _candidate("s2", categories.SHOES),
         _candidate("s3", categories.SHOES),
+        _candidate("s4", categories.SHOES),
         _candidate("b1", categories.BAGS),
     ]
-    # Deliberately non-compliant reply: three shoes first, then the bag.
+    # Deliberately over-eager reply: four shoes first, then the bag.
     reply = json.dumps(
         {"ranked": [
             {"product_id": "s1", "rationale": "Jolies chaussures.", "coherence": 0.9},
             {"product_id": "s2", "rationale": "Encore des chaussures.", "coherence": 0.8},
             {"product_id": "s3", "rationale": "Toujours des chaussures.", "coherence": 0.7},
-            {"product_id": "b1", "rationale": "Un sac assorti.", "coherence": 0.6},
+            {"product_id": "s4", "rationale": "Une paire de trop.", "coherence": 0.6},
+            {"product_id": "b1", "rationale": "Un sac assorti.", "coherence": 0.5},
         ]}
     )
 
@@ -156,7 +159,10 @@ def test_ranker_keeps_at_most_one_item_per_category():
     )
 
     picked = [r.product_id for r in results]
-    assert picked == ["s1", "b1"], f"expected one per category, got {picked}"
+    # Three shoes kept (the per-category cap), the fourth dropped, bag kept.
+    assert picked == ["s1", "s2", "s3", "b1"], picked
+    shoes = [r for r in results if r.category == categories.SHOES]
+    assert len(shoes) == ranker._PER_CATEGORY
 
 
 def test_ranker_prompt_states_the_category_of_each_candidate():

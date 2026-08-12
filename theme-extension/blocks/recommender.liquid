@@ -1,64 +1,157 @@
 {% comment %}
-  khriss AI recommender — theme app block.
+  khriss / Masilya Match — theme app block.
 
   Merchants drop this block onto any page in the theme editor and set the API
-  base URL (the deployed khriss service). The block renders an upload widget
-  with a client-side preview; results come back from POST {api}/recommend.
+  base URL (the deployed khriss service). It renders the Masilya Match feature
+  in three bands, in the shopper's own order:
 
-  Copy lives here rather than in the JS so it stays editable in the theme
-  editor and translatable per storefront. Prices are formatted from the shop's
-  own money_format, so the widget shows dirhams where the rest of the store
-  does, instead of a hardcoded currency.
+    1. the ecru intro -- "Envoie une photo. Complète ton look." -- which is
+       where the shopper actually uploads;
+    2. the scrolling "comment ça marche" strip;
+    3. the dark "IT'S A MATCH" panel, which holds nothing but the suggestions
+       and stays hidden until a photo has been sent.
+
+  All marketing copy lives in schema settings so it stays editable in the theme
+  editor and translatable per storefront. Runtime strings (statuses, buttons,
+  category row labels) ride on data-* attributes so the JS carries no user-facing
+  text. Prices are formatted from the shop's own money_format, so the widget
+  shows dirhams where the rest of the store does.
 {% endcomment %}
+
+{% comment %}
+  Plus Jakarta Sans carries the maquette's look; the theme won't have it, so the
+  block loads it itself (display=swap keeps text visible while it arrives). If a
+  merchant prefers their own theme font, they can delete these two tags and the
+  CSS falls back to the theme's sans stack.
+{% endcomment %}
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,700&display=swap">
 
 <div
   class="khriss"
   data-khriss-api="{{ block.settings.api_url }}"
   data-khriss-money="{{ shop.money_format | strip_html | escape }}"
-  data-khriss-t-analysing="{{ 'Analyse de votre photo…' | escape }}"
-  data-khriss-t-outfit="{{ 'Pour compléter votre look :' | escape }}"
-  data-khriss-t-similar="{{ 'Articles similaires :' | escape }}"
-  data-khriss-t-both="{{ 'Voici les deux, au choix :' | escape }}"
-  data-khriss-t-empty="{{ 'Aucun résultat pour cette photo. Essayez une autre prise de vue.' | escape }}"
+  data-khriss-t-analysing="{{ 'Analyse en cours — couleurs, coupe & vibe détectées' | escape }}"
+  data-khriss-t-found="{{ '{n} suggestions trouvées pour compléter ton look' | escape }}"
+  data-khriss-t-similar="{{ 'Articles similaires' | escape }}"
+  data-khriss-t-empty="{{ 'Aucun résultat pour cette photo. Essaie une autre prise de vue.' | escape }}"
   data-khriss-t-error="{{ 'Une erreur est survenue. Veuillez réessayer.' | escape }}"
+  data-khriss-t-match="{{ 'Match' | escape }}"
   data-khriss-t-add="{{ 'Ajouter au panier' | escape }}"
   data-khriss-t-adding="{{ 'Ajout…' | escape }}"
   data-khriss-t-added="{{ 'Ajouté ✓' | escape }}"
   data-khriss-t-retry="{{ 'Réessayer' | escape }}"
+  data-khriss-cat-shoes="{{ 'Chaussures' | escape }}"
+  data-khriss-cat-bags="{{ 'Sacs' | escape }}"
+  data-khriss-cat-jewelry="{{ 'Bijoux' | escape }}"
 >
-  <div class="khriss__intro">
-    <h2 class="khriss__heading">{{ block.settings.heading }}</h2>
-    <p class="khriss__sub">{{ block.settings.subheading }}</p>
-  </div>
+  {% comment %} -------------------------------------------------- HERO -- {% endcomment %}
+  <section class="khriss__hero">
+    <div class="khriss__hero-inner">
+      {% if block.settings.eyebrow != blank %}
+        <div class="khriss__eyebrow">✦ {{ block.settings.eyebrow }}</div>
+      {% endif %}
+      <h2 class="khriss__title">{{ block.settings.heading }}</h2>
+      {% if block.settings.subheading != blank %}
+        <p class="khriss__lead">{{ block.settings.subheading }}</p>
+      {% endif %}
+      {% if block.settings.tagline != blank %}
+        <p class="khriss__tagline">
+          {{ block.settings.tagline }}
+          {% if block.settings.tagline_em != blank %}
+            <em>{{ block.settings.tagline_em }}</em>
+          {% endif %}
+        </p>
+      {% endif %}
+      {% comment %}
+        The upload lives here, directly under "Envoie une photo. Complète ton
+        look." -- that line is the call to action, so the control that answers
+        it sits with it rather than further down the page.
+      {% endcomment %}
+      <div class="khriss__upload">
+        <label class="khriss__drop" tabindex="0">
+          <input type="file" accept="image/*" class="khriss__file" hidden />
+          <svg class="khriss__drop-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 16V4m0 0L8 8m4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <span class="khriss__drop-btn">{{ block.settings.button_label }}</span>
+          <span class="khriss__drop-hint">{{ block.settings.hint }}</span>
+        </label>
 
-  <label class="khriss__drop" tabindex="0">
-    <input type="file" accept="image/*" class="khriss__file" hidden />
-    <svg class="khriss__drop-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 16V4m0 0L8 8m4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-    </svg>
-    <span class="khriss__drop-btn">{{ block.settings.button_label }}</span>
-    <span class="khriss__drop-hint">{{ block.settings.hint }}</span>
-  </label>
+        <div class="khriss__preview" hidden>
+          {% comment %}
+            width/height are a 1:1 placeholder ratio only: the real dimensions
+            come from the file the shopper picks. CSS resets both to auto, so
+            these just reserve space before load and satisfy theme-check.
+          {% endcomment %}
+          <img class="khriss__preview-img" alt="Votre photo" width="200" height="200" />
+          <span class="khriss__scan" aria-hidden="true"></span>
+        </div>
 
-  <div class="khriss__preview" hidden>
-    {% comment %}
-      width/height are a 1:1 placeholder ratio only: the real dimensions come
-      from the file the shopper picks. CSS resets both to auto, so these just
-      reserve space before load and satisfy theme-check.
-    {% endcomment %}
-    <img class="khriss__preview-img" alt="Votre photo" width="200" height="200" />
-  </div>
+        <p class="khriss__status" hidden></p>
+      </div>
 
-  <p class="khriss__status" hidden></p>
+      {% if block.settings.badge != blank %}
+        <div class="khriss__badge"><span class="khriss__star">✦</span> {{ block.settings.badge }}</div>
+      {% endif %}
+    </div>
+  </section>
 
-  {% comment %} Tabs appear only when detection is ambiguous. {% endcomment %}
-  <div class="khriss__tabs" role="tablist" hidden>
-    <button type="button" class="khriss__tab is-active" data-tab="outfit" role="tab">Compléter le look</button>
-    <button type="button" class="khriss__tab" data-tab="shoe" role="tab">Articles similaires</button>
-  </div>
+  {% comment %} ------------------------------------ COMMENT ÇA MARCHE -- {% endcomment %}
+  {% if block.settings.step_1 != blank or block.settings.step_2 != blank or block.settings.step_3 != blank %}
+    <div class="khriss__marquee-wrap">
+      {% if block.settings.steps_title != blank %}
+        <div class="khriss__marquee-eyebrow">✦ {{ block.settings.steps_title }}</div>
+      {% endif %}
+      <div class="khriss__marquee">
+        {% comment %}
+          Two identical sets, translated -50% by the animation, give a seamless
+          loop. The second set is aria-hidden so screen readers hear the steps
+          once.
+        {% endcomment %}
+        <div class="khriss__marquee-track">
+          {% for i in (1..2) %}
+            <div class="khriss__marquee-set"{% if i == 2 %} aria-hidden="true"{% endif %}>
+              {% assign n = 0 %}
+              {% assign steps = block.settings.step_1 | append: '§' | append: block.settings.step_2 | append: '§' | append: block.settings.step_3 | split: '§' %}
+              {% for step in steps %}
+                {% if step != blank %}
+                  {% assign n = n | plus: 1 %}
+                  <div class="khriss__marquee-item">
+                    <span class="khriss__marquee-num">{{ n }}</span>
+                    <span class="khriss__marquee-text">{{ step }}</span>
+                  </div>
+                  <span class="khriss__marquee-sep">✦</span>
+                {% endif %}
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
 
-  <div class="khriss__results" role="list"></div>
+  {% comment %}
+    ------------------------------------------------------- IT'S A MATCH --
+    Suggestions only. Hidden until the shopper sends a photo, so the page never
+    shows an empty "match" panel to someone who hasn't uploaded anything yet.
+  {% endcomment %}
+  <section class="khriss__demo" hidden>
+    <div class="khriss__demo-inner">
+      <div class="khriss__demo-title">{{ block.settings.match_title }}</div>
+
+      <div class="khriss__result-head" hidden></div>
+
+      {% comment %} Tabs appear only when detection is ambiguous. {% endcomment %}
+      <div class="khriss__tabs" role="tablist" hidden>
+        <button type="button" class="khriss__tab is-active" data-tab="outfit" role="tab">{{ block.settings.tab_outfit }}</button>
+        <button type="button" class="khriss__tab" data-tab="shoe" role="tab">{{ block.settings.tab_similar }}</button>
+      </div>
+
+      <div class="khriss__results"></div>
+    </div>
+  </section>
 </div>
 
 <script src="{{ 'recommender.js' | asset_url }}" defer></script>
@@ -66,7 +159,7 @@
 
 {% schema %}
 {
-  "name": "khriss recommender",
+  "name": "Masilya Match",
   "target": "section",
   "settings": [
     {
@@ -76,28 +169,106 @@
       "info": "ex. https://votre-service.up.railway.app (sans barre oblique finale)"
     },
     {
-      "type": "text",
-      "id": "heading",
-      "label": "Titre",
-      "default": "Trouvez votre style"
+      "type": "header",
+      "content": "Intro"
     },
     {
       "type": "text",
+      "id": "eyebrow",
+      "label": "Sur-titre",
+      "default": "Unique au Maroc"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Titre",
+      "default": "Prête à trouver ton match ?"
+    },
+    {
+      "type": "textarea",
       "id": "subheading",
-      "label": "Sous-titre",
-      "default": "Envoyez la photo d'une tenue ou d'un article, on s'occupe du reste."
+      "label": "Texte d'intro",
+      "default": "Essaie Masilya Match dès maintenant — c'est gratuit, instantané, et ça change vraiment ta façon de faire du shopping."
+    },
+    {
+      "type": "text",
+      "id": "tagline",
+      "label": "Accroche",
+      "default": "Envoie une photo."
+    },
+    {
+      "type": "text",
+      "id": "tagline_em",
+      "label": "Accroche (partie dorée en italique)",
+      "default": "Complète ton look."
     },
     {
       "type": "text",
       "id": "button_label",
-      "label": "Texte du bouton",
+      "label": "Texte du bouton d'envoi",
       "default": "Choisir une photo"
     },
     {
       "type": "text",
       "id": "hint",
-      "label": "Texte d'aide",
+      "label": "Texte d'aide sous le bouton",
       "default": "JPG ou PNG, 5 Mo maximum"
+    },
+    {
+      "type": "text",
+      "id": "badge",
+      "label": "Badge",
+      "default": "Unique au Maroc. Indispensable pour toi."
+    },
+    {
+      "type": "header",
+      "content": "Comment ça marche"
+    },
+    {
+      "type": "text",
+      "id": "steps_title",
+      "label": "Titre de la bande",
+      "default": "Comment ça marche"
+    },
+    {
+      "type": "text",
+      "id": "step_1",
+      "label": "Étape 1",
+      "default": "Envoie une photo de ton look"
+    },
+    {
+      "type": "text",
+      "id": "step_2",
+      "label": "Étape 2",
+      "default": "L'IA repère tes couleurs, ta coupe, ta vibe"
+    },
+    {
+      "type": "text",
+      "id": "step_3",
+      "label": "Étape 3",
+      "default": "Reçois ton match : chaussures, sac & bijoux"
+    },
+    {
+      "type": "header",
+      "content": "Panneau Match (suggestions)"
+    },
+    {
+      "type": "text",
+      "id": "match_title",
+      "label": "Titre du panneau",
+      "default": "IT'S A MATCH"
+    },
+    {
+      "type": "text",
+      "id": "tab_outfit",
+      "label": "Onglet — compléter le look",
+      "default": "Compléter le look"
+    },
+    {
+      "type": "text",
+      "id": "tab_similar",
+      "label": "Onglet — articles similaires",
+      "default": "Articles similaires"
     }
   ]
 }

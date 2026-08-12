@@ -88,18 +88,21 @@ def outfit_candidates(
         low, high = price_band
         candidates = [c for c in candidates if _price_in(c["price"], low, high)]
 
-    # Rank the pool by visual affinity to the outfit, then prune near-duplicates.
+    # Rank the pool by visual affinity to the outfit.
     outfit_vec = image_vec if image_vec is not None else embedder.embed_image(image_bytes)
     candidates = _rank_by_vector(candidates, outfit_vec, store)
-    candidates = _diversify(candidates, store)
 
-    # Balance the shortlist across categories. A flat top-N would be all shoes:
-    # the catalog is 320 shoes to 11 bags, so bags and jewellery would never
-    # reach the ranker and "complete the look" could never return one of each.
+    # Balance the shortlist across categories, and prune near-duplicates *within*
+    # each category. A flat top-N would be all shoes (the catalog is ~320 shoes
+    # to 11 bags), and a global diversity pass lets shoes spend the budget before
+    # bags and jewellery are considered -- so both are done per category here,
+    # giving the ranker a few genuinely distinct options for every slot.
     per_category = max(1, settings.mode_a_candidate_pool // len(categories.CATEGORIES))
     picked: list[dict] = []
     for cat in categories.CATEGORIES:
-        picked.extend([c for c in candidates if c.get("category") == cat][:per_category])
+        in_cat = [c for c in candidates if c.get("category") == cat]
+        in_cat = _diversify(in_cat, store)
+        picked.extend(in_cat[:per_category])
     return picked
 
 
@@ -201,6 +204,7 @@ def _payloads_to_results(hits: list[tuple[str, float, dict]]) -> list[ProductRes
                     price=r.price,
                     image_url=r.image_url,
                     variant_id=r.variant_id,
+                    category=r.category,
                     score=round(float(score), 4),
                 )
             )

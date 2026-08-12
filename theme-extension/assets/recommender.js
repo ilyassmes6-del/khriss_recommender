@@ -1,20 +1,32 @@
-/* khriss recommender — client widget.
+/* khriss / Masilya Match — client widget.
  *
- * Flow: shopper picks an image -> show preview -> POST to {api}/recommend ->
- * render a results grid. Mode A ("outfit") shows a stylist rationale under each
- * card; Mode B ("shoe") shows a plain similarity grid; ambiguous ("both")
- * renders two tabs backed by the two result lists in the response.
+ * Flow: the shopper picks an image in the hero ("Envoie une photo. Complète ton
+ * look.") -> preview + scan there -> POST to {api}/recommend -> the dark
+ * "IT'S A MATCH" panel below unhides and fills with the suggestions.
  *
- * All copy comes from data-khriss-t-* attributes set in the Liquid block, so
- * this file carries no user-facing strings and stays translatable.
+ * Mode A ("outfit") groups the results into one row per category (Chaussures /
+ * Sacs / Bijoux), each with several articles and a stylist rationale; Mode B
+ * ("shoe") shows a flat similarity grid; ambiguous ("both") renders two tabs
+ * backed by the two result lists in the response.
+ *
+ * All copy comes from data-khriss-* attributes set in the Liquid block, so this
+ * file carries no user-facing strings and stays translatable.
  */
 (function () {
+  // Category display order + labels come from the block; drives the row order.
+  const CATEGORY_ORDER = ["shoes", "bags", "jewelry"];
+
   const roots = document.querySelectorAll(".khriss");
   roots.forEach(initWidget);
 
   function initWidget(root) {
     const api = (root.dataset.khrissApi || "").replace(/\/$/, "");
     const t = readStrings(root);
+    const catLabels = {
+      shoes: root.dataset.khrissCatShoes || "",
+      bags: root.dataset.khrissCatBags || "",
+      jewelry: root.dataset.khrissCatJewelry || "",
+    };
     const money = root.dataset.khrissMoney || "{{amount}}";
 
     const fileInput = root.querySelector(".khriss__file");
@@ -22,6 +34,8 @@
     const preview = root.querySelector(".khriss__preview");
     const previewImg = root.querySelector(".khriss__preview-img");
     const status = root.querySelector(".khriss__status");
+    const demo = root.querySelector(".khriss__demo");
+    const resultHead = root.querySelector(".khriss__result-head");
     const tabs = root.querySelector(".khriss__tabs");
     const resultsEl = root.querySelector(".khriss__results");
 
@@ -63,10 +77,19 @@
 
       previewImg.src = URL.createObjectURL(file);
       preview.hidden = false;
+      preview.classList.add("is-analysing");
+      // The drop zone stays visible so the shopper can try another photo (and
+      // so an error still leaves a working control) -- the preview sits below it.
       lastResponse = null;
       setTabsVisible(false);
       setStatus(t.analysing, { busy: true });
+
+      // The suggestions panel is hidden until there is something to put in it;
+      // reveal it now so the skeletons read as "results are coming".
+      demo.hidden = false;
+      setHead(t.analysing);
       showSkeletons();
+      scrollToResults();
 
       try {
         const data = await postImage(api, file);
@@ -74,10 +97,28 @@
         render(data);
       } catch (err) {
         resultsEl.innerHTML = "";
+        setHead(t.error);
         setStatus(t.error);
         console.error("khriss:", err);
       } finally {
+        preview.classList.remove("is-analysing");
         pending = false;
+      }
+    }
+
+    /* Bring the dark panel into view: the upload sits up in the hero, so on a
+       long page the results would otherwise land well below the fold. */
+    function scrollToResults() {
+      const reduced =
+        window.matchMedia &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      try {
+        demo.scrollIntoView({
+          behavior: reduced ? "auto" : "smooth",
+          block: "start",
+        });
+      } catch (e) {
+        demo.scrollIntoView(); // older browsers: no options object
       }
     }
 
@@ -92,52 +133,119 @@
         btn.classList.add("is-active");
         btn.setAttribute("aria-selected", "true");
         const which = btn.dataset.tab;
-        renderGrid(
-          which === "outfit" ? lastResponse.outfit_results : lastResponse.shoe_results,
-          which
-        );
+        if (which === "outfit") {
+          renderGrouped(lastResponse.outfit_results || []); // owns the head
+        } else {
+          setHead(t.similar);
+          renderFlat(lastResponse.shoe_results || [], "shoe");
+        }
       });
     });
 
     function render(data) {
+      setStatus("");
+      status.hidden = true;
       if (data.mode === "both") {
-        setStatus(t.both);
+        // Tabs let the shopper switch between the two readings; the grouped
+        // "complete the look" view is shown first. renderGrouped owns the head
+        // (the suggestion count), so nothing sets it here.
         setTabsVisible(true);
-        renderGrid(data.outfit_results || [], "outfit");
+        renderGrouped(data.outfit_results || []);
       } else if (data.mode === "outfit") {
-        setStatus(t.outfit);
-        renderGrid(data.results, "outfit");
+        renderGrouped(data.results || []);
       } else {
-        setStatus(t.similar);
-        renderGrid(data.results, "shoe");
+        setHead(t.similar);
+        renderFlat(data.results || [], "shoe");
       }
     }
 
-    function renderGrid(items, mode) {
+    /* Outfit path: one row per category, several articles each. */
+    function renderGrouped(items) {
       resultsEl.innerHTML = "";
-      if (!items || items.length === 0) {
-        const p = document.createElement("p");
-        p.className = "khriss__empty";
-        p.textContent = t.empty;
-        resultsEl.appendChild(p);
+      if (!items.length) {
+        showEmpty();
+        setHead("");
         return;
       }
-      items.forEach((p) => resultsEl.appendChild(card(p, mode)));
+      setHead(t.found.replace("{n}", items.length));
+
+      const byCat = new Map();
+      items.forEach((p) => {
+        const key = p.category || "_other";
+        if (!byCat.has(key)) byCat.set(key, []);
+        byCat.get(key).push(p);
+      });
+
+      // Known categories first in a fixed order, then anything unmapped.
+      const keys = CATEGORY_ORDER.filter((k) => byCat.has(k));
+      byCat.forEach((_, k) => {
+        if (!keys.includes(k)) keys.push(k);
+      });
+
+      keys.forEach((key) => {
+        const group = byCat.get(key);
+        resultsEl.appendChild(
+          categoryGroup(catLabels[key] || "", group, "outfit")
+        );
+      });
+    }
+
+    /* Similar-items path: a single flat grid, no category headings. */
+    function renderFlat(items, mode) {
+      resultsEl.innerHTML = "";
+      if (!items.length) {
+        showEmpty();
+        return;
+      }
+      const grid = document.createElement("div");
+      grid.className = "khriss__grid";
+      grid.setAttribute("role", "list");
+      items.forEach((p) => grid.appendChild(card(p, mode)));
+      resultsEl.appendChild(grid);
+    }
+
+    function categoryGroup(label, items, mode) {
+      const wrap = document.createElement("div");
+      wrap.className = "khriss__group";
+      if (label) {
+        const head = document.createElement("div");
+        head.className = "khriss__group-head";
+        head.innerHTML =
+          escapeHtml(label) +
+          `<span class="khriss__group-count">${items.length}</span>`;
+        wrap.appendChild(head);
+      }
+      const grid = document.createElement("div");
+      grid.className = "khriss__grid";
+      grid.setAttribute("role", "list");
+      items.forEach((p) => grid.appendChild(card(p, mode)));
+      wrap.appendChild(grid);
+      return wrap;
+    }
+
+    function showEmpty() {
+      const p = document.createElement("p");
+      p.className = "khriss__empty";
+      p.textContent = t.empty;
+      resultsEl.appendChild(p);
     }
 
     /* Placeholder cards while the request is in flight: the wait is a couple of
        seconds of CLIP work, and an empty box reads as broken. */
     function showSkeletons() {
       resultsEl.innerHTML = "";
-      for (let i = 0; i < 4; i++) {
+      const grid = document.createElement("div");
+      grid.className = "khriss__grid";
+      for (let i = 0; i < 6; i++) {
         const el = document.createElement("div");
         el.className = "khriss__card khriss__card--skeleton";
         el.innerHTML =
           '<div class="khriss__sk khriss__sk-img"></div>' +
           '<div class="khriss__sk khriss__sk-line"></div>' +
           '<div class="khriss__sk khriss__sk-line khriss__sk-line--short"></div>';
-        resultsEl.appendChild(el);
+        grid.appendChild(el);
       }
+      resultsEl.appendChild(grid);
     }
 
     function card(p, mode) {
@@ -145,16 +253,24 @@
       el.className = "khriss__card";
       el.setAttribute("role", "listitem");
 
+      const cat = p.category && catLabels[p.category] ? catLabels[p.category] : "";
+
       el.innerHTML = `
+        <span class="khriss__tag">✦ ${escapeHtml(t.match)}</span>
         <a class="khriss__card-link" href="/products/${encodeURIComponent(p.handle || "")}">
           <div class="khriss__card-media">
             <img class="khriss__card-img" src="${escapeHtml(p.image_url || "")}" alt="${escapeHtml(p.title)}" loading="lazy" />
           </div>
-          <div class="khriss__card-title">${escapeHtml(p.title)}</div>
-          <div class="khriss__card-price">${escapeHtml(formatMoney(p.price, money))}</div>
         </a>
-        ${mode === "outfit" && p.rationale ? `<p class="khriss__rationale">${escapeHtml(p.rationale)}</p>` : ""}
-        <button type="button" class="khriss__add" ${p.variant_id ? "" : "disabled"}>${escapeHtml(t.add)}</button>
+        <div class="khriss__card-body">
+          ${cat ? `<div class="khriss__card-cat">${escapeHtml(cat)}</div>` : ""}
+          <a class="khriss__card-link" href="/products/${encodeURIComponent(p.handle || "")}">
+            <div class="khriss__card-title">${escapeHtml(p.title)}</div>
+          </a>
+          <div class="khriss__card-price">${escapeHtml(formatMoney(p.price, money))}</div>
+          ${mode === "outfit" && p.rationale ? `<p class="khriss__rationale">${escapeHtml(p.rationale)}</p>` : ""}
+          <button type="button" class="khriss__add" ${p.variant_id ? "" : "disabled"}>${escapeHtml(t.add)}</button>
+        </div>
       `;
 
       const addBtn = el.querySelector(".khriss__add");
@@ -166,7 +282,22 @@
       tabs.hidden = !on;
     }
 
+    function setHead(msg) {
+      if (!msg) {
+        resultHead.hidden = true;
+        resultHead.textContent = "";
+        return;
+      }
+      resultHead.hidden = false;
+      resultHead.textContent = "✦ " + msg;
+    }
+
     function setStatus(msg, opts) {
+      if (!msg) {
+        status.textContent = "";
+        status.classList.remove("is-busy");
+        return;
+      }
       status.hidden = false;
       status.textContent = msg;
       status.classList.toggle("is-busy", !!(opts && opts.busy));
@@ -177,11 +308,11 @@
     const d = root.dataset;
     return {
       analysing: d.khrissTAnalysing,
-      outfit: d.khrissTOutfit,
+      found: d.khrissTFound || "{n}",
       similar: d.khrissTSimilar,
-      both: d.khrissTBoth,
       empty: d.khrissTEmpty,
       error: d.khrissTError,
+      match: d.khrissTMatch,
       add: d.khrissTAdd,
       adding: d.khrissTAdding,
       added: d.khrissTAdded,

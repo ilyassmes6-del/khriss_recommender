@@ -58,6 +58,15 @@ DISPLAY_FR: dict[str, str] = {
     JEWELRY: "bijou",
 }
 
+# Plural, title-case labels for the storefront's per-category result rows
+# ("Chaussures", "Sacs", "Bijoux") -- the singular DISPLAY_FR above reads wrong
+# as a section heading over several items.
+DISPLAY_FR_PLURAL: dict[str, str] = {
+    SHOES: "Chaussures",
+    BAGS: "Sacs",
+    JEWELRY: "Bijoux",
+}
+
 
 def from_product_type(product_type: Optional[str]) -> Optional[str]:
     """Map a Shopify product_type to a category, or None if unrecognised."""

@@ -1,109 +1,214 @@
-/* khriss recommender — storefront widget.
+/* khriss / Masilya Match — storefront widget.
  *
- * Colours are derived from the host theme (currentColor + a few tuned alphas)
- * rather than hardcoded, so the block inherits the merchant's palette instead
- * of fighting it.
+ * Reproduces the Masilya Match maquette: an ecru intro, a scrolling
+ * "comment ça marche" band, and the dark "IT'S A MATCH" panel.
+ *
+ * The brand palette is intentionally hardcoded (rather than inherited from the
+ * host theme via currentColor) because the merchant asked for this exact look.
+ * Every variable and rule is scoped under `.khriss` so nothing leaks into the
+ * theme's namespace — there is deliberately no global reset or `body` rule.
  */
 .khriss {
-  --khriss-radius: 14px;
-  --khriss-line: color-mix(in srgb, currentColor 14%, transparent);
-  --khriss-muted: color-mix(in srgb, currentColor 62%, transparent);
-  --khriss-surface: color-mix(in srgb, currentColor 4%, transparent);
+  --ecru: #f7f4ef;
+  --blanc: #ffffff;
+  --noir: #1b1815;
+  --taupe: #a79483;
+  --sable: #dcd0be;
+  --or: #c6a15b;
+  --or-clair: #e7d3a6;
+  --gris-texte: #5b564f;
+  --ligne: rgba(27, 24, 21, 0.1);
+  --radius: 6px;
 
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 2.5rem 1.5rem;
-  font-family: inherit;
+  color: var(--noir);
+  font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* The hidden attribute must win over any display rule below it. Without this,
-   `display: flex` on .khriss__tabs silently defeats [hidden] and the tabs show
-   before there is anything to switch between. */
+/* The hidden attribute must win over any display rule below it, so tabs and
+   the result head stay down until there is something to show. */
 .khriss [hidden] {
   display: none !important;
 }
 
-.khriss__intro {
-  margin-bottom: 1.5rem;
-}
-.khriss__heading {
-  margin: 0 0 0.4rem;
-  font-size: clamp(1.5rem, 1.2rem + 1.2vw, 2rem);
-  letter-spacing: -0.01em;
-}
-.khriss__sub {
-  margin: 0;
-  color: var(--khriss-muted);
-  max-width: 52ch;
-  line-height: 1.5;
+.khriss *,
+.khriss *::before,
+.khriss *::after {
+  box-sizing: border-box;
 }
 
-/* ---------------------------------------------------------------- upload -- */
+/* --------------------------------------------------------------- hero -- */
+.khriss__hero {
+  background: var(--ecru);
+  padding: clamp(2.5rem, 1.5rem + 5vw, 5rem) 1.5rem;
+}
+.khriss__hero-inner {
+  max-width: 640px;
+  margin: 0 auto;
+  text-align: center;
+}
+.khriss__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--or);
+  font-weight: 700;
+  margin-bottom: 1.1rem;
+}
+.khriss__title {
+  margin: 0;
+  font-size: clamp(2rem, 1.4rem + 3vw, 2.9rem);
+  line-height: 1.08;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.khriss__title em {
+  font-style: italic;
+  color: var(--or);
+}
+.khriss__lead {
+  margin: 1rem auto 0;
+  max-width: 30rem;
+  font-size: clamp(1rem, 0.95rem + 0.3vw, 1.05rem);
+  color: var(--gris-texte);
+}
+.khriss__tagline {
+  margin: 1.6rem 0 0;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--ligne);
+  font-size: clamp(1.15rem, 1rem + 0.8vw, 1.35rem);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.khriss__tagline em {
+  font-style: italic;
+  color: var(--or);
+}
+.khriss__badge {
+  margin-top: 1.6rem;
+  font-size: 12px;
+  color: var(--gris-texte);
+}
+.khriss__star {
+  color: var(--or);
+}
+
+/* ------------------------------------------------ upload (in the hero) -- */
+.khriss__upload {
+  max-width: 30rem;
+  margin: 1.8rem auto 0;
+}
 .khriss__drop {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.9rem;
   padding: 2rem 1.5rem;
-  border: 1.5px dashed var(--khriss-line);
-  border-radius: var(--khriss-radius);
-  background: var(--khriss-surface);
+  background: var(--blanc);
+  border: 1.5px dashed var(--sable);
+  border-radius: var(--radius);
   cursor: pointer;
   text-align: center;
-  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+  transition: border-color 0.18s ease, transform 0.18s ease;
 }
 .khriss__drop:hover,
 .khriss__drop:focus-visible,
 .khriss__drop.is-dragging {
-  border-color: currentColor;
-  background: color-mix(in srgb, currentColor 7%, transparent);
+  outline: none;
+  border-color: var(--or);
 }
 .khriss__drop.is-dragging {
   transform: scale(1.005);
 }
 .khriss__drop-icon {
-  width: 28px;
-  height: 28px;
-  opacity: 0.7;
+  width: 34px;
+  height: 34px;
+  color: var(--or);
 }
+/* Styled as the maquette's primary button, so the call to action reads as one. */
 .khriss__drop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--noir);
+  color: var(--ecru);
+  border: 1px solid var(--noir);
+  padding: 14px 28px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   font-weight: 600;
-  font-size: 1rem;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.khriss__drop:hover .khriss__drop-btn,
+.khriss__drop:focus-visible .khriss__drop-btn {
+  background: transparent;
+  color: var(--noir);
 }
 .khriss__drop-hint {
-  font-size: 0.82rem;
-  color: var(--khriss-muted);
+  font-size: 0.8rem;
+  color: var(--gris-texte);
 }
 
 .khriss__preview {
-  margin: 1.25rem 0 0;
+  position: relative;
+  margin: 1.1rem 0 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+  box-shadow: 0 14px 30px -14px rgba(27, 24, 21, 0.35);
 }
 .khriss__preview-img {
-  max-height: 190px;
+  display: block;
+  width: 100%;
   /* Override the placeholder width/height attributes on the tag so the
      uploaded image keeps its own aspect ratio. */
-  width: auto;
   height: auto;
-  border-radius: var(--khriss-radius);
+  max-height: 22rem;
   object-fit: cover;
-  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.1);
+}
+/* Sweep line over the preview while analysing, echoing the maquette scan. */
+.khriss__scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--or), transparent);
+  opacity: 0;
+}
+.khriss__preview.is-analysing .khriss__scan {
+  opacity: 0.95;
+  animation: khriss-scan 1.8s ease-in-out infinite;
+}
+@keyframes khriss-scan {
+  0% { top: 0; }
+  50% { top: calc(100% - 2px); }
+  100% { top: 0; }
 }
 
-/* ---------------------------------------------------------------- status -- */
 .khriss__status {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  margin: 1.25rem 0 0.75rem;
-  font-weight: 600;
+  justify-content: center;
+  gap: 0.6rem;
+  margin: 1rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--gris-texte);
 }
 .khriss__status.is-busy::before {
   content: "";
-  width: 15px;
-  height: 15px;
-  border: 2px solid var(--khriss-line);
-  border-top-color: currentColor;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--ligne);
+  border-top-color: var(--or);
   border-radius: 50%;
   animation: khriss-spin 0.7s linear infinite;
   flex: none;
@@ -112,50 +217,178 @@
   to { transform: rotate(360deg); }
 }
 
-/* ------------------------------------------------------------------ tabs -- */
+/* ---------------------------------------------------- comment ça marche -- */
+.khriss__marquee-wrap {
+  padding: 2rem 0 2.25rem;
+}
+.khriss__marquee-eyebrow {
+  text-align: center;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--or);
+  font-weight: 700;
+  margin-bottom: 1.1rem;
+}
+.khriss__marquee {
+  background: var(--noir);
+  overflow: hidden;
+  position: relative;
+  padding: 1rem 0;
+  border-top: 1px solid rgba(231, 211, 166, 0.15);
+  border-bottom: 1px solid rgba(231, 211, 166, 0.15);
+}
+.khriss__marquee-track {
+  display: flex;
+  width: max-content;
+  animation: khriss-marquee 26s linear infinite;
+}
+.khriss__marquee:hover .khriss__marquee-track {
+  animation-play-state: paused;
+}
+.khriss__marquee-set {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.khriss__marquee-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 2.1rem;
+  white-space: nowrap;
+}
+.khriss__marquee-num {
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--noir);
+  background: var(--or);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.khriss__marquee-text {
+  font-size: 15px;
+  color: var(--ecru);
+  font-weight: 500;
+}
+.khriss__marquee-sep {
+  color: var(--or);
+  font-size: 16px;
+  opacity: 0.7;
+}
+@keyframes khriss-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+/* --------------------------------------------------------- IT'S A MATCH -- */
+.khriss__demo {
+  background: var(--noir);
+  color: var(--ecru);
+  padding: clamp(2.5rem, 1.5rem + 5vw, 5rem) 1.5rem;
+}
+.khriss__demo-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.khriss__demo-title {
+  text-align: center;
+  color: var(--blanc);
+  font-size: clamp(1.7rem, 1.2rem + 2.4vw, 2.25rem);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin-bottom: clamp(2rem, 1rem + 3vw, 3.5rem);
+}
+.khriss__result-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--or-clair);
+  margin-bottom: 1.1rem;
+}
+
 .khriss__tabs {
   display: flex;
   gap: 0.5rem;
-  margin: 0 0 1.25rem;
+  margin: 0 0 1.4rem;
   flex-wrap: wrap;
 }
 .khriss__tab {
   padding: 0.45rem 1rem;
-  border: 1px solid var(--khriss-line);
+  border: 1px solid rgba(231, 211, 166, 0.35);
   background: transparent;
-  color: inherit;
+  color: var(--ecru);
   border-radius: 999px;
   cursor: pointer;
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
 }
 .khriss__tab:hover {
-  border-color: currentColor;
+  border-color: var(--or-clair);
 }
 .khriss__tab.is-active {
-  background: #111;
-  border-color: #111;
-  color: #fff;
+  background: var(--or);
+  border-color: var(--or);
+  color: var(--noir);
+  font-weight: 600;
 }
 
-/* --------------------------------------------------------------- results -- */
-.khriss__results {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 1.5rem 1.25rem;
+/* a per-category row: heading + its own grid */
+.khriss__group + .khriss__group {
+  margin-top: 1.8rem;
 }
-@media (max-width: 480px) {
-  .khriss__results {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1.25rem 0.75rem;
-  }
+.khriss__group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0 0 0.9rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--blanc);
+}
+.khriss__group-count {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--taupe);
+}
+
+.khriss__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 1rem;
 }
 
 .khriss__card {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  background: #232019;
+  border: 1px solid rgba(231, 211, 166, 0.15);
+  border-radius: var(--radius);
+  overflow: hidden;
+  position: relative;
+}
+.khriss__tag {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+  background: var(--or);
+  color: var(--noir);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 20px;
+  letter-spacing: 0.03em;
 }
 .khriss__card-link {
   text-decoration: none;
@@ -164,8 +397,7 @@
 }
 .khriss__card-media {
   overflow: hidden;
-  border-radius: var(--khriss-radius);
-  background: var(--khriss-surface);
+  background: linear-gradient(160deg, #2b2018, #1d1a15);
 }
 .khriss__card-img {
   display: block;
@@ -177,88 +409,126 @@
 .khriss__card-link:hover .khriss__card-img {
   transform: scale(1.04);
 }
+.khriss__card-body {
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.khriss__card-cat {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #a8a196;
+  margin-bottom: 0.25rem;
+}
 .khriss__card-title {
-  font-size: 0.9rem;
-  font-weight: 600;
-  margin-top: 0.6rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--ecru);
   line-height: 1.35;
 }
 .khriss__card-price {
-  font-size: 0.88rem;
-  color: var(--khriss-muted);
-  margin-top: 0.1rem;
+  font-size: 0.83rem;
+  color: var(--or-clair);
+  font-weight: 600;
+  margin-top: 0.35rem;
 }
 .khriss__rationale {
-  font-size: 0.82rem;
-  line-height: 1.45;
-  color: var(--khriss-muted);
-  margin: 0.35rem 0 0;
-  padding-left: 0.6rem;
-  border-left: 2px solid var(--khriss-line);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: #8fa985;
+  margin: 0.5rem 0 0;
+  display: flex;
+  gap: 0.35rem;
 }
-
+.khriss__rationale::before {
+  content: "●";
+  color: #8fa985;
+  flex: none;
+}
 .khriss__add {
-  margin-top: auto;
-  padding: 0.55rem 0.8rem;
-  border: 1px solid currentColor;
+  margin-top: 0.85rem;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid rgba(231, 211, 166, 0.4);
   border-radius: 999px;
   background: transparent;
-  color: inherit;
+  color: var(--ecru);
   cursor: pointer;
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 600;
   transition: background 0.18s ease, opacity 0.18s ease;
 }
 .khriss__add:hover:not(:disabled) {
-  background: color-mix(in srgb, currentColor 10%, transparent);
+  background: rgba(231, 211, 166, 0.12);
 }
 .khriss__add:disabled {
   opacity: 0.4;
   cursor: default;
 }
 .khriss__add.is-added {
-  border-style: solid;
-  opacity: 0.75;
+  border-color: var(--or);
+  color: var(--or-clair);
+  opacity: 0.9;
 }
 
 .khriss__empty {
-  color: var(--khriss-muted);
-  grid-column: 1 / -1;
+  color: var(--taupe);
   margin: 0;
 }
 
-/* -------------------------------------------------------------- skeleton -- */
+/* skeleton cards while the request is in flight */
+.khriss__card--skeleton {
+  padding: 0;
+}
 .khriss__sk {
   background: linear-gradient(
     90deg,
-    var(--khriss-surface) 25%,
-    color-mix(in srgb, currentColor 9%, transparent) 37%,
-    var(--khriss-surface) 63%
+    rgba(231, 211, 166, 0.06) 25%,
+    rgba(231, 211, 166, 0.16) 37%,
+    rgba(231, 211, 166, 0.06) 63%
   );
   background-size: 400% 100%;
   animation: khriss-shimmer 1.3s ease infinite;
-  border-radius: 6px;
 }
 .khriss__sk-img {
   aspect-ratio: 1 / 1;
-  border-radius: var(--khriss-radius);
 }
 .khriss__sk-line {
   height: 11px;
-  margin-top: 0.55rem;
+  margin: 0.85rem 0.85rem 0;
+  border-radius: 4px;
 }
 .khriss__sk-line--short {
   width: 45%;
+  margin-bottom: 0.85rem;
 }
 @keyframes khriss-shimmer {
   0% { background-position: 100% 50%; }
   100% { background-position: 0 50%; }
 }
 
+/* --------------------------------------------------------------- mobile -- */
+@media (max-width: 480px) {
+  .khriss__drop {
+    padding: 1.5rem 1rem;
+  }
+  .khriss__drop-btn {
+    padding: 13px 20px;
+    font-size: 12px;
+  }
+  .khriss__grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .khriss__marquee-track,
   .khriss__sk,
   .khriss__status.is-busy::before,
+  .khriss__preview.is-analysing .khriss__scan,
   .khriss__card-img,
   .khriss__drop {
     animation: none;

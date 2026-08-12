@@ -32,17 +32,21 @@ _SYSTEM = (
     "natural sentence. Respond with STRICT JSON and no prose."
 )
 
-# One piece per category rather than the three best overall: the catalog is
-# ~320 shoes to 11 bags, so an unconstrained pick is three pairs of shoes and
-# "compléter le look" stops meaning anything.
+# Several pieces per category rather than the single best overall: the shopper
+# wants options for each slot (a few pairs of shoes, a few bags, a few jewels),
+# not one of each. The per-category cap keeps the balance -- without it the
+# catalog's ~320 shoes to 11 bags would swamp the look with shoes alone.
+_PER_CATEGORY = 3
+
 _SCHEMA_HINT = (
     'Return exactly this shape:\n'
     '{"ranked": [{"product_id": "<id from list>", '
     '"rationale": "<une phrase en français, adressée au client>", '
     '"coherence": <number 0..1>}]}\n'
-    "Choose AT MOST ONE item per category, and prefer covering every category "
-    "that appears in the list (shoes, bags, jewelry). At most 3 items, best "
-    "first. The rationale must be in French."
+    f"Choose UP TO {_PER_CATEGORY} items per category, and cover every category "
+    "that appears in the list (shoes, bags, jewelry) -- give the shopper a few "
+    "options for each. Order best first within each category. The rationale "
+    "must be in French."
 )
 
 
@@ -50,7 +54,8 @@ def rank_outfit(
     outfit: OutfitAttributes,
     candidates: list[dict],
     client=None,
-    top_n: int = 3,
+    top_n: int = 12,
+    per_category: int = _PER_CATEGORY,
 ) -> list[ProductResult]:
     if not candidates:
         return []
@@ -73,19 +78,19 @@ def rank_outfit(
         return []  # give up gracefully rather than surface garbage
 
     results: list[ProductResult] = []
-    seen_categories: set[str] = set()
+    per_cat_count: dict[str, int] = {}
     for item in parsed.ranked:
         if item.product_id not in valid_ids:
             continue  # drop hallucinated IDs
         c = by_id[item.product_id]
-        # The prompt asks for one piece per category; enforce it here too,
-        # because a model that ignores the instruction would otherwise return
-        # three pairs of shoes and call it a complete look.
+        # The prompt asks for at most `per_category` pieces per category; cap it
+        # here too, because a model that ignores the instruction would otherwise
+        # return a pile of shoes and call it a complete look.
         cat = c.get("category")
-        if cat and cat in seen_categories:
-            continue
         if cat:
-            seen_categories.add(cat)
+            if per_cat_count.get(cat, 0) >= per_category:
+                continue
+            per_cat_count[cat] = per_cat_count.get(cat, 0) + 1
         results.append(
             ProductResult(
                 product_id=item.product_id,
@@ -94,6 +99,7 @@ def rank_outfit(
                 price=c.get("price"),
                 image_url=c.get("image_url"),
                 variant_id=c.get("variant_id"),
+                category=cat,
                 score=round(item.coherence, 4),
                 rationale=item.rationale,
             )
@@ -149,7 +155,10 @@ def _call(client, prompt: str) -> str:
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": prompt},
         ],
-        max_tokens=700,
+        # Room for up to ~9 French rationales plus JSON scaffolding. Too low and
+        # the reply truncates mid-JSON -> parse fails -> repair truncates again
+        # -> the shopper silently gets zero results.
+        max_tokens=2000,
     )
 
 

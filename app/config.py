@@ -58,7 +58,7 @@ class Settings(BaseSettings):
 
     # --- Retrieval knobs (documented in README > tuning) ---
     mode_b_top_k: int = 12
-    mode_a_candidate_pool: int = 30
+    mode_a_candidate_pool: int = 36  # ~12 per category before the ranker's cut
     mode_a_diversity_threshold: float = 0.92  # drop near-duplicate colorways
     mode_a_formality_tolerance: int = 1  # ±N formality points
     same_type_boost: float = 0.05  # Mode B soft boost for matching shoe type
