@@ -40,6 +40,25 @@
   box-sizing: border-box;
 }
 
+/* ----------------------------------------------------------- full bleed -- */
+/* The theme drops an app block inside its own centred, padded container, which
+   left the widget as a narrow column with the page showing either side. Each of
+   these three bands carries its own background and is meant to run edge to edge,
+   so they break out of that container; their inner wrappers below keep the text
+   itself at a readable width.
+
+   calc(50% - 50vw) is the negative margin from the container's edge out to the
+   viewport's. Note 100vw counts the classic scrollbar gutter, so on a platform
+   with non-overlay scrollbars this can overhang by the scrollbar width -- if a
+   horizontal scrollbar ever shows up on the storefront, that is the cause. */
+.khriss__hero,
+.khriss__marquee-wrap,
+.khriss__demo {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+}
+
 /* --------------------------------------------------------------- hero -- */
 .khriss__hero {
   background: var(--ecru);
@@ -293,7 +312,8 @@
   padding: clamp(2.5rem, 1.5rem + 5vw, 5rem) 1.5rem;
 }
 .khriss__demo-inner {
-  max-width: 1100px;
+  /* Matches the maquette's .wrap, now that the band spans the viewport. */
+  max-width: 1240px;
   margin: 0 auto;
 }
 .khriss__demo-title {
@@ -362,10 +382,15 @@
   color: var(--taupe);
 }
 
+/* A fixed column count, not auto-fill: now that the panel is full width,
+   auto-fill built seven 163px tracks, so a three-item category row showed three
+   cramped cards against a wall of empty space. Four columns keeps the cards a
+   sensible size whether the row holds three (a category) or twelve (the flat
+   similar-items grid). */
 .khriss__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.25rem;
 }
 
 .khriss__card {
@@ -510,6 +535,17 @@
 }
 
 /* --------------------------------------------------------------- mobile -- */
+@media (max-width: 900px) {
+  .khriss__grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .khriss__grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.9rem;
+  }
+}
 @media (max-width: 480px) {
   .khriss__drop {
     padding: 1.5rem 1rem;
@@ -519,7 +555,6 @@
     font-size: 12px;
   }
   .khriss__grid {
-    grid-template-columns: 1fr 1fr;
     gap: 0.75rem;
   }
 }
