@@ -167,7 +167,7 @@
         setHead("");
         return;
       }
-      setHead(t.found.replace("{n}", items.length));
+      setHead(t.found.replace("%n%", items.length));
 
       const byCat = new Map();
       items.forEach((p) => {
@@ -308,7 +308,7 @@
     const d = root.dataset;
     return {
       analysing: d.khrissTAnalysing,
-      found: d.khrissTFound || "{n}",
+      found: d.khrissTFound || "%n%", // %n% is replaced with the result count
       similar: d.khrissTSimilar,
       empty: d.khrissTEmpty,
       error: d.khrissTError,

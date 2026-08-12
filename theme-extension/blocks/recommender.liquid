@@ -32,7 +32,11 @@
   data-khriss-api="{{ block.settings.api_url }}"
   data-khriss-money="{{ shop.money_format | strip_html | escape }}"
   data-khriss-t-analysing="{{ 'Analyse en cours — couleurs, coupe & vibe détectées' | escape }}"
-  data-khriss-t-found="{{ '{n} suggestions trouvées pour compléter ton look' | escape }}"
+  {% comment %}
+    The count placeholder is %n% rather than {n}: a brace inside a Liquid output
+    tag reads as the start of another tag and fails validation at deploy time.
+  {% endcomment %}
+  data-khriss-t-found="{{ '%n% suggestions trouvées pour compléter ton look' | escape }}"
   data-khriss-t-similar="{{ 'Articles similaires' | escape }}"
   data-khriss-t-empty="{{ 'Aucun résultat pour cette photo. Essaie une autre prise de vue.' | escape }}"
   data-khriss-t-error="{{ 'Une erreur est survenue. Veuillez réessayer.' | escape }}"
