@@ -84,12 +84,13 @@
       setTabsVisible(false);
       setStatus(t.analysing, { busy: true });
 
-      // The suggestions panel is hidden until there is something to put in it;
-      // reveal it now so the skeletons read as "results are coming".
+      // The panel fills in below while the shopper stays in the hero watching
+      // the scan; we deliberately do NOT scroll here. Jumping to an empty
+      // "IT'S A MATCH" before anything has been found reads as broken -- the
+      // scroll happens in render(), once there are actual suggestions to see.
       demo.hidden = false;
       setHead(t.analysing);
       showSkeletons();
-      scrollToResults();
 
       try {
         const data = await postImage(api, file);
@@ -143,29 +144,41 @@
     });
 
     function render(data) {
-      setStatus("");
-      status.hidden = true;
+      let found;
       if (data.mode === "both") {
         // Tabs let the shopper switch between the two readings; the grouped
         // "complete the look" view is shown first. renderGrouped owns the head
         // (the suggestion count), so nothing sets it here.
         setTabsVisible(true);
-        renderGrouped(data.outfit_results || []);
+        found = renderGrouped(data.outfit_results || []);
       } else if (data.mode === "outfit") {
-        renderGrouped(data.results || []);
+        found = renderGrouped(data.results || []);
       } else {
         setHead(t.similar);
-        renderFlat(data.results || [], "shoe");
+        found = renderFlat(data.results || [], "shoe");
+      }
+
+      if (found) {
+        // Only now is there something worth jumping to.
+        setStatus("");
+        status.hidden = true;
+        scrollToResults();
+      } else {
+        // Nothing found: say so where the shopper already is, next to the photo
+        // they just sent, rather than sending them to an empty panel.
+        setStatus(t.empty);
       }
     }
 
-    /* Outfit path: one row per category, several articles each. */
+    /* Outfit path: one row per category, several articles each.
+       Returns whether anything was rendered, so the caller knows if there is
+       something worth scrolling to. */
     function renderGrouped(items) {
       resultsEl.innerHTML = "";
       if (!items.length) {
         showEmpty();
         setHead("");
-        return;
+        return false;
       }
       setHead(t.found.replace("%n%", items.length));
 
@@ -188,6 +201,7 @@
           categoryGroup(catLabels[key] || "", group, "outfit")
         );
       });
+      return true;
     }
 
     /* Similar-items path: a single flat grid, no category headings. */
@@ -195,13 +209,14 @@
       resultsEl.innerHTML = "";
       if (!items.length) {
         showEmpty();
-        return;
+        return false;
       }
       const grid = document.createElement("div");
       grid.className = "khriss__grid";
       grid.setAttribute("role", "list");
       items.forEach((p) => grid.appendChild(card(p, mode)));
       resultsEl.appendChild(grid);
+      return true;
     }
 
     function categoryGroup(label, items, mode) {
