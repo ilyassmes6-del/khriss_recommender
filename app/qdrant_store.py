@@ -55,6 +55,10 @@ class VectorStore:
             ("type", qm.PayloadSchemaType.KEYWORD),
             ("product_id", qm.PayloadSchemaType.KEYWORD),
             ("category", qm.PayloadSchemaType.KEYWORD),
+            # List of sizes this product currently has in stock. A keyword index
+            # over an array matches if *any* element matches, which is exactly
+            # "does this shoe come in the shopper's size".
+            ("sizes_in_stock", qm.PayloadSchemaType.KEYWORD),
         ]:
             try:
                 self.client.create_payload_index(self.collection, field, schema)
@@ -83,6 +87,31 @@ class VectorStore:
         if points:
             self.client.upsert(self.collection, points=points, wait=True)
 
+    def set_product_payload(self, product_id: str, payload: dict) -> bool:
+        """Update payload fields on a product's points, leaving vectors alone.
+
+        Metadata that changes far more often than the images -- stock, per-size
+        availability -- must not cost a CLIP pass over the catalog to refresh.
+        Returns False when the product has no points yet (nothing to update), so
+        callers can tell a refresh from a product that still needs indexing.
+        """
+        flt = qm.Filter(
+            must=[
+                qm.FieldCondition(
+                    key="product_id", match=qm.MatchValue(value=product_id)
+                )
+            ]
+        )
+        hits, _ = self.client.scroll(
+            self.collection, scroll_filter=flt, limit=1, with_payload=False
+        )
+        if not hits:
+            return False
+        self.client.set_payload(
+            self.collection, payload=payload, points=flt, wait=True
+        )
+        return True
+
     def delete_product(self, product_id: str) -> None:
         self.client.delete(
             self.collection,
@@ -105,12 +134,17 @@ class VectorStore:
         in_stock_only: bool = True,
         over_fetch: int = 4,
         category: Optional[str] = None,
+        size: Optional[str] = None,
     ) -> list[tuple[str, float, dict]]:
         """Return (product_id, score, payload), deduped to best vector/product.
 
         `category` restricts the search to one slice of the index. Cosine
         similarity across categories is close to meaningless -- a black bag and
         a black shoe score highly on colour alone -- so callers scope it.
+
+        `size` keeps only products stocking that size. Filtering here rather than
+        after the search means `limit` returns that many *wearable* results,
+        instead of a top-N that a size filter then guts.
         """
         must = []
         if in_stock_only:
@@ -120,6 +154,12 @@ class VectorStore:
         if category:
             must.append(
                 qm.FieldCondition(key="category", match=qm.MatchValue(value=category))
+            )
+        if size:
+            must.append(
+                qm.FieldCondition(
+                    key="sizes_in_stock", match=qm.MatchValue(value=size)
+                )
             )
         flt = qm.Filter(must=must) if must else None
         # Over-fetch because several vectors may map to one product.

@@ -31,7 +31,9 @@ def _get_router() -> ModeRouter:
     return _router
 
 
-def recommend(image_bytes: bytes, llm_client=None) -> RecommendResponse:
+def recommend(
+    image_bytes: bytes, llm_client=None, size: str | None = None
+) -> RecommendResponse:
     # One CLIP pass for the whole request. Routing, extraction and retrieval all
     # score against the *same* image, so embedding per step meant up to five
     # identical forward passes -- which on a shared vCPU was the entire wait.
@@ -49,24 +51,28 @@ def recommend(image_bytes: bytes, llm_client=None) -> RecommendResponse:
         category = route.category or categories.SHOES
         attrs = extractor.extract_item(image_bytes, category, vec=vec)
         results = retrieval.similar_shoes(
-            image_bytes, attrs, query_vec=vec, category=category
+            image_bytes, attrs, query_vec=vec, category=category, size=size
         )
         return RecommendResponse(
             mode="shoe",
             confidence=route.confidence,
             query_attributes=attrs.model_dump(mode="json"),
             results=results,
+            size=size,
         )
 
     if route.mode == "outfit":
         attrs = extractor.extract_outfit(image_bytes, vec=vec)
-        candidates = retrieval.outfit_candidates(attrs, image_bytes, image_vec=vec)
-        results = ranker.rank_outfit(attrs, candidates, client=llm_client)
+        candidates = retrieval.outfit_candidates(
+            attrs, image_bytes, image_vec=vec, size=size
+        )
+        results = ranker.rank_outfit(attrs, candidates, client=llm_client, size=size)
         return RecommendResponse(
             mode="outfit",
             confidence=route.confidence,
             query_attributes=attrs.model_dump(mode="json"),
             results=results,
+            size=size,
         )
 
     # Ambiguous -> run both paths, storefront renders tabs.
@@ -74,10 +80,14 @@ def recommend(image_bytes: bytes, llm_client=None) -> RecommendResponse:
     shoe_attrs = extractor.extract_item(image_bytes, category, vec=vec)
     outfit_attrs = extractor.extract_outfit(image_bytes, vec=vec)
     shoe_results = retrieval.similar_shoes(
-        image_bytes, shoe_attrs, query_vec=vec, category=category
+        image_bytes, shoe_attrs, query_vec=vec, category=category, size=size
     )
-    candidates = retrieval.outfit_candidates(outfit_attrs, image_bytes, image_vec=vec)
-    outfit_results = ranker.rank_outfit(outfit_attrs, candidates, client=llm_client)
+    candidates = retrieval.outfit_candidates(
+        outfit_attrs, image_bytes, image_vec=vec, size=size
+    )
+    outfit_results = ranker.rank_outfit(
+        outfit_attrs, candidates, client=llm_client, size=size
+    )
     return RecommendResponse(
         mode="both",
         confidence=route.confidence,
@@ -85,4 +95,5 @@ def recommend(image_bytes: bytes, llm_client=None) -> RecommendResponse:
         results=outfit_results,
         shoe_results=shoe_results,
         outfit_results=outfit_results,
+        size=size,
     )

@@ -86,6 +86,10 @@ class ProductResult(BaseModel):
     # The storefront groups outfit results into one row per category, so it
     # needs the bucket on every card rather than inferring it from the title.
     category: Optional[str] = None
+    # The size `variant_id` resolves to, when the shopper picked one. None for
+    # sizeless pieces (bags, jewellery), so the card can label a shoe "Taille 38"
+    # without claiming a handbag has a size.
+    size: Optional[str] = None
     score: float = 0.0
     # Mode A only: one-sentence shopper-facing rationale.
     rationale: Optional[str] = None
@@ -138,6 +142,9 @@ class RecommendResponse(BaseModel):
     # For "both", we surface the outfit attributes (the richer of the two).
     query_attributes: dict = Field(default_factory=dict)
     results: list[ProductResult] = Field(default_factory=list)
+    # Echo of the size the results were filtered to, so the storefront can label
+    # the grid without trusting its own local state.
+    size: Optional[str] = None
     # Populated only when mode == "both": per-tab result lists.
     shoe_results: Optional[list[ProductResult]] = None
     outfit_results: Optional[list[ProductResult]] = None

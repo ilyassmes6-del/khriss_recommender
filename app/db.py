@@ -42,6 +42,10 @@ class Product(Base):
     variant_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     in_stock: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    # {"38": {"variant_id": "...", "available": true}, ...} for products sold by
+    # size; {} for bags and jewellery. Carries the per-size variant so add-to-cart
+    # adds the size the shopper actually chose, not the product's default variant.
+    sizes: Mapped[dict] = mapped_column(JSON, default=dict)
 
     # Attribute axes we filter on, denormalised for fast Mode A queries.
     shoe_type: Mapped[Optional[str]] = mapped_column(String, index=True, nullable=True)
@@ -72,28 +76,39 @@ def get_session() -> Session:
 
 def init_db() -> None:
     Base.metadata.create_all(get_engine())
-    _ensure_category_column()
+    _ensure_columns()
 
 
-def _ensure_category_column() -> None:
-    """Add `category` to a products table that predates it.
+# Columns added after the table first shipped, as (name, DDL type, index SQL).
+# create_all() creates missing tables but never alters existing ones, so a
+# database populated before one of these existed would fail every query against
+# it. Still not enough surface to justify Alembic -- but enough that each new
+# column is a row here rather than another bespoke function.
+_ADDED_COLUMNS: list[tuple[str, str, Optional[str]]] = [
+    (
+        "category",
+        "VARCHAR",
+        "CREATE INDEX IF NOT EXISTS ix_products_category ON products (category)",
+    ),
+    # Per-size variants; see Product.sizes. No index: it is read per candidate
+    # row after the SQL filter, never selected on.
+    ("sizes", "JSON", None),
+]
 
-    create_all() creates missing tables but never alters existing ones, so a
-    database populated before this column existed would fail every query
-    against it. One nullable column does not justify pulling in Alembic;
-    revisit if a second migration ever shows up.
-    """
+
+def _ensure_columns() -> None:
     engine = get_engine()
     insp = inspect(engine)
     if "products" not in insp.get_table_names():
-        return  # create_all just made it, with the column
-    if any(c["name"] == "category" for c in insp.get_columns("products")):
-        return
-    with engine.begin() as conn:
-        conn.execute(text("ALTER TABLE products ADD COLUMN category VARCHAR"))
-        conn.execute(
-            text("CREATE INDEX IF NOT EXISTS ix_products_category ON products (category)")
-        )
+        return  # create_all just made it, with every column
+    existing = {c["name"] for c in insp.get_columns("products")}
+    for name, ddl_type, index_sql in _ADDED_COLUMNS:
+        if name in existing:
+            continue
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE products ADD COLUMN {name} {ddl_type}"))
+            if index_sql:
+                conn.execute(text(index_sql))
 
 
 def upsert_product(session: Session, **fields) -> None:

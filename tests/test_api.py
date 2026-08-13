@@ -43,7 +43,10 @@ def _stub_recommend(monkeypatch, mode="shoe"):
             )
         ],
     )
-    monkeypatch.setattr("app.main.pipeline.recommend", lambda data: resp)
+    monkeypatch.setattr(
+        "app.main.pipeline.recommend",
+        lambda data, llm_client=None, size=None: resp,
+    )
 
 
 def test_recommend_happy_path(client, monkeypatch):

@@ -84,6 +84,7 @@ Copy `.env.example` to `.env` and fill it in. Every variable:
 | `OPENROUTER_BASE_URL` | OpenAI-compatible endpoint. Default `https://openrouter.ai/api/v1`. |
 | `OPENROUTER_REFERER` / `OPENROUTER_TITLE` | Optional OpenRouter attribution headers. |
 | `RANKER_MODEL` | OpenRouter model slug for the single Mode A ranking call. Default `anthropic/claude-haiku-4.5`. |
+| `SIZE_OPTION_NAMES` | Comma-separated Shopify option names that carry a shoe size, matched case-insensitively. Default `taille,size,pointure`. Anything else (notably Shopify's `Title`/`Default Title`) counts as sizeless. |
 | `VISION_MODEL` | Optional separate slug for the vision extractor; blank reuses `RANKER_MODEL`. |
 | `EXTRACTOR` | `clip` (free, zero-shot; default) or `llm` (OpenRouter vision, higher fidelity, ~$0.001/image). |
 | `QDRANT_URL` | Qdrant endpoint. In Docker: `http://qdrant:6333`. |
@@ -129,6 +130,18 @@ DB writes and you land around **0.3–0.5 s per product**, so a 2,000-product
 catalog takes roughly **15–25 minutes** with `EXTRACTOR=clip`. `EXTRACTOR=llm`
 adds an OpenRouter vision round-trip per product (~1 s each), so budget closer to
 an hour.
+
+Stock and per-size availability move far more often than product photos do, and
+refreshing them does not need the model:
+
+```bash
+docker compose run --rm api python indexer.py refresh
+```
+
+`refresh` walks the Shopify feed and rewrites the stock/size metadata on rows
+and vectors that already exist — no image downloads, no CLIP. It is what to run
+after a restock, and after deploying a change to the size data. Products in the
+feed but not yet indexed are reported and left alone; `incremental` embeds those.
 
 ### Build incrementally (recommended first-run sanity checks)
 

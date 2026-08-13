@@ -7,7 +7,7 @@ diversity pruning -> hand off to the ranker.
 from __future__ import annotations
 
 import numpy as np
-from sqlalchemy import select
+from sqlalchemy import String, select
 
 from app import categories, db
 from app.clip_model import Embedder, get_embedder
@@ -26,11 +26,17 @@ def similar_shoes(
     embedder: Embedder | None = None,
     query_vec=None,
     category: str | None = None,
+    size: str | None = None,
 ) -> list[ProductResult]:
     store = store or get_store()
     embedder = embedder or get_embedder()
     if query_vec is None:
         query_vec = embedder.embed_image(image_bytes)
+
+    # Size narrows shoes only. A shopper who set their size is still shown every
+    # bag and jewel -- those have no size to match, and dropping them would make
+    # picking a size quietly shrink the rest of the catalog.
+    size_filter = size if category == categories.SHOES else None
 
     # Scope to the uploaded item's own category. Cross-category cosine is
     # dominated by colour -- a black clutch and a black boot look "similar" to
@@ -40,6 +46,7 @@ def similar_shoes(
         limit=settings.mode_b_top_k * 2,
         in_stock_only=True,
         category=category,
+        size=size_filter,
     )
 
     query_type = query_attrs.type_value()
@@ -52,7 +59,9 @@ def similar_shoes(
 
     scored.sort(key=lambda t: t[0], reverse=True)
     top = scored[: settings.mode_b_top_k]
-    return _payloads_to_results([(pid, s, p) for s, pid, p in top])
+    return _payloads_to_results(
+        [(pid, s, p) for s, pid, p in top], size=size_filter
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -65,6 +74,7 @@ def outfit_candidates(
     store: VectorStore | None = None,
     embedder: Embedder | None = None,
     image_vec=None,
+    size: str | None = None,
 ) -> list[dict]:
     """Filtered, diversity-pruned shortlist for the ranker.
 
@@ -80,9 +90,24 @@ def outfit_candidates(
     with db.get_session() as session:
         rows = []
         for cat in categories.CATEGORIES:
-            rows.extend(_category_rows(session, cat, lo, hi, compatible_seasons))
+            # Size applies to shoes only; bags and jewellery are sizeless and
+            # must not be narrowed by the shopper's shoe size.
+            cat_size = size if cat == categories.SHOES else None
+            rows.extend(
+                _category_rows(session, cat, lo, hi, compatible_seasons, cat_size)
+            )
         # Detach the fields we need before the session closes.
         candidates = [_row_to_candidate(r) for r in rows]
+
+    if size:
+        # The SQL LIKE above is a prefilter over serialized JSON; this is the
+        # authoritative check against the parsed map, and it also drops sizes
+        # that exist but are sold out.
+        candidates = [
+            c
+            for c in candidates
+            if c.get("category") != categories.SHOES or _stocks_size(c, size)
+        ]
 
     if price_band:
         low, high = price_band
@@ -106,7 +131,7 @@ def outfit_candidates(
     return picked
 
 
-def _category_rows(session, category: str, lo: int, hi: int, seasons):
+def _category_rows(session, category: str, lo: int, hi: int, seasons, size=None):
     """In-stock products for one category, relaxing filters if they empty it.
 
     The formality window and season match were tuned against a catalog of 320
@@ -115,10 +140,17 @@ def _category_rows(session, category: str, lo: int, hi: int, seasons):
     "compléter le look" degrading back to three pairs of shoes with no error
     anywhere. Narrow first, widen only when a category would otherwise be
     unrepresented.
+
+    Size is the one filter that never relaxes, so it belongs in `base` with
+    in_stock rather than in the relaxable layers: a shoe that does not come in
+    the shopper's size is not a worse match, it is unwearable, and showing it
+    when the narrower passes come up empty would invert the whole feature.
     """
     base = select(db.Product).where(
         db.Product.in_stock.is_(True), db.Product.category == category
     )
+    if size:
+        base = base.where(_has_size(size))
 
     stmt = base.where(db.Product.formality >= lo, db.Product.formality <= hi)
     if seasons:
@@ -136,6 +168,23 @@ def _category_rows(session, category: str, lo: int, hi: int, seasons):
         return rows
 
     return session.scalars(base).all()
+
+
+def _has_size(size: str):
+    """SQL predicate: this product stocks `size`.
+
+    `sizes` is a JSON (not JSONB) column, so there is no containment operator to
+    lean on. The catalog is a few hundred rows and this runs once per request,
+    so a LIKE over the serialized JSON is cheap -- and it is only a prefilter:
+    _stocks_size below re-checks each surviving row against the parsed dict, so
+    a substring that happens to match cannot smuggle a wrong size through.
+    """
+    return db.Product.sizes.cast(String).like(f'%"{size}"%')
+
+
+def _stocks_size(candidate: dict, size: str) -> bool:
+    entry = (candidate.get("sizes") or {}).get(size)
+    return bool(entry and entry.get("available"))
 
 
 def _rank_by_vector(
@@ -183,11 +232,37 @@ def _row_to_candidate(r: db.Product) -> dict:
         "image_url": r.image_url,
         "variant_id": r.variant_id,
         "category": r.category,
+        "sizes": r.sizes or {},
         "attributes": r.attributes or {},
     }
 
 
-def _payloads_to_results(hits: list[tuple[str, float, dict]]) -> list[ProductResult]:
+def variant_for_size(record: dict, size: str | None) -> tuple[str | None, str | None]:
+    """Resolve (variant_id, size) for the size the shopper chose.
+
+    The stored `variant_id` is whichever variant happened to be available at
+    index time. Handing that back to a shopper who picked 38 puts a different
+    size in their cart and only shows up at checkout, so every result built for
+    a sized product resolves through here instead.
+    """
+    default = record.get("variant_id")
+    if not size:
+        return default, None
+    entry = (record.get("sizes") or {}).get(size)
+    if entry and entry.get("available") and entry.get("variant_id"):
+        return entry["variant_id"], size
+    # Sizeless (bag, jewel) -> keep its only variant. A sized product that got
+    # this far without the size is a stock change between index and request:
+    # return no variant so the card renders with add-to-cart disabled rather
+    # than adding the wrong size.
+    if not record.get("sizes"):
+        return default, None
+    return None, None
+
+
+def _payloads_to_results(
+    hits: list[tuple[str, float, dict]], size: str | None = None
+) -> list[ProductResult]:
     ids = [pid for pid, _, _ in hits]
     with db.get_session() as session:
         rows = db.get_products_by_ids(session, ids)
@@ -196,6 +271,7 @@ def _payloads_to_results(hits: list[tuple[str, float, dict]]) -> list[ProductRes
             r = rows.get(pid)
             if r is None:
                 continue
+            variant_id, chosen = variant_for_size(_row_to_candidate(r), size)
             out.append(
                 ProductResult(
                     product_id=pid,
@@ -203,8 +279,9 @@ def _payloads_to_results(hits: list[tuple[str, float, dict]]) -> list[ProductRes
                     handle=r.handle,
                     price=r.price,
                     image_url=r.image_url,
-                    variant_id=r.variant_id,
+                    variant_id=variant_id,
                     category=r.category,
+                    size=chosen,
                     score=round(float(score), 4),
                 )
             )

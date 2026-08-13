@@ -46,6 +46,7 @@ query Products($cursor: String) {
           price
           inventoryQuantity
           availableForSale
+          selectedOptions { name value }
         }
       }
     }
@@ -63,7 +64,13 @@ query Product($id: ID!) {
     tags
     images(first: 10) { nodes { url } }
     variants(first: 25) {
-      nodes { id price inventoryQuantity availableForSale }
+      nodes {
+        id
+        price
+        inventoryQuantity
+        availableForSale
+        selectedOptions { name value }
+      }
     }
   }
 }
@@ -186,8 +193,7 @@ def normalize_product(node: dict) -> dict:
 
     # In stock if any variant is available for sale (or has positive inventory).
     in_stock = any(
-        v.get("availableForSale") or (v.get("inventoryQuantity") or 0) > 0
-        for v in variants
+        _variant_available(v) for v in variants
     )
     # Pick the first available variant for add-to-cart; fall back to first.
     chosen = next((v for v in variants if v.get("availableForSale")), None)
@@ -211,7 +217,42 @@ def normalize_product(node: dict) -> dict:
         "price": price,
         "variant_id": variant_id,
         "in_stock": in_stock,
+        "sizes": _sizes(variants),
     }
+
+
+def _variant_available(v: dict) -> bool:
+    return bool(v.get("availableForSale")) or (v.get("inventoryQuantity") or 0) > 0
+
+
+def _sizes(variants: list[dict]) -> dict[str, dict]:
+    """Map each size to its own variant: {"38": {"variant_id": ..., "available": bool}}.
+
+    Shoes carry a size option (this catalog names it "Taille", values 36-41);
+    bags and jewellery come back as a single "Default Title" variant and so map
+    to {} -- which is what marks a product as sizeless downstream, rather than a
+    category check, so a sized handbag would still work if the merchant added
+    one.
+
+    Keyed by size value, because that is what the shopper picks and what the
+    storefront sends back. Where two variants somehow share a size, an available
+    one wins over an unavailable one so the shopper isn't sent to a dead option.
+    """
+    out: dict[str, dict] = {}
+    for v in variants:
+        size = None
+        for opt in v.get("selectedOptions") or []:
+            if (opt.get("name") or "").strip().lower() in settings.size_option_names_set:
+                size = (opt.get("value") or "").strip()
+                break
+        if not size:
+            continue
+        available = _variant_available(v)
+        prev = out.get(size)
+        if prev is not None and prev["available"] and not available:
+            continue  # keep the available one
+        out[size] = {"variant_id": _numeric_id(v["id"]), "available": available}
+    return out
 
 
 def _numeric_id(gid: str) -> str:

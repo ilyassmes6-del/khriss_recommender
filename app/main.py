@@ -15,9 +15,19 @@ evaluates the annotations in this file natively, so the import buys us nothing.
 import json
 import time
 from contextlib import asynccontextmanager
+from functools import partial
 from typing import Optional
 
-from fastapi import BackgroundTasks, FastAPI, File, Header, HTTPException, Request, UploadFile
+from fastapi import (
+    BackgroundTasks,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -77,7 +87,11 @@ def health():
 
 @app.post("/recommend")
 @limiter.limit("30/minute")
-async def recommend(request: Request, image: UploadFile = File(...)):
+async def recommend(
+    request: Request,
+    image: UploadFile = File(...),
+    size: str | None = Form(default=None),
+):
     if image.content_type not in _ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=415, detail="unsupported media type")
 
@@ -87,13 +101,19 @@ async def recommend(request: Request, image: UploadFile = File(...)):
     if not data:
         raise HTTPException(status_code=400, detail="empty upload")
 
+    # Optional: no size means no size filter, which is exactly the old
+    # behaviour. Bounded because it reaches a SQL LIKE and a Qdrant match.
+    size = (size or "").strip() or None
+    if size is not None and len(size) > 16:
+        raise HTTPException(status_code=400, detail="invalid size")
+
     try:
         # CLIP inference is blocking CPU work. Calling it directly from this
         # coroutine stalls the whole event loop, so concurrent uploads (and
         # /health, and CORS preflights) queue behind whichever one arrived
         # first until the proxy times them out and returns 502 -- even though
         # the app itself eventually answers every one of them with a 200.
-        result = await run_in_threadpool(pipeline.recommend, data)
+        result = await run_in_threadpool(partial(pipeline.recommend, data, size=size))
     except Exception as exc:  # pragma: no cover - defensive
         raise HTTPException(status_code=500, detail=f"recommendation failed: {exc}")
     return result.model_dump(exclude_none=True)

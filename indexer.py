@@ -5,6 +5,7 @@ Usage
 -----
   python indexer.py full          # index the whole catalog (resume-safe)
   python indexer.py incremental   # only products not already in the checkpoint
+  python indexer.py refresh       # stock + sizes only, no re-embedding
   python indexer.py dump --limit 10   # extract + print attributes for N products,
                                        # write nothing (eyeball the extractor)
   python indexer.py reset         # clear the resume checkpoint
@@ -49,6 +50,37 @@ def _run_index(resume: bool) -> None:
         f"skipped={stats.skipped_no_image} failed={stats.failed} "
         f"pruned={stats.pruned}"
     )
+
+
+def _refresh() -> None:
+    """Refresh stock + per-size availability without re-embedding anything.
+
+    This is the pass to run after a stock change, or after adding a field that
+    lives in metadata rather than in the vectors: it costs one walk of the
+    Shopify feed, not a CLIP pass over the catalog.
+    """
+    db.init_db()
+    shop = ShopifyClient()
+    indexer = Indexer()
+    indexer.store.ensure_collection(dim=indexer.embedder.dim)
+
+    bar = tqdm(desc="refreshing", unit="product")
+
+    def progress(_product: dict, ok: bool) -> None:
+        bar.update(1)
+
+    start = time.time()
+    stats = indexer.refresh_all(shop.iter_products(), progress=progress)
+    bar.close()
+    print(
+        f"done in {time.time() - start:.1f}s | refreshed={stats.refreshed} "
+        f"not_indexed={stats.not_indexed} failed={stats.failed}"
+    )
+    if stats.not_indexed:
+        print(
+            f"note: {stats.not_indexed} product(s) are in the feed but not indexed "
+            "-- run `python indexer.py incremental` to embed them."
+        )
 
 
 def _dump(limit: int) -> None:
@@ -115,6 +147,9 @@ def main() -> None:
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("full", help="index the whole catalog (clears checkpoint)")
     sub.add_parser("incremental", help="index only products not yet done")
+    sub.add_parser(
+        "refresh", help="update stock + sizes only, no re-embedding (fast)"
+    )
     d = sub.add_parser("dump", help="print extracted attributes, write nothing")
     d.add_argument("--limit", type=int, default=10)
     sub.add_parser("reset", help="clear the resume checkpoint")
@@ -131,6 +166,8 @@ def main() -> None:
         _run_index(resume=False)
     elif args.cmd == "incremental":
         _run_index(resume=True)
+    elif args.cmd == "refresh":
+        _refresh()
     elif args.cmd == "dump":
         _dump(args.limit)
     elif args.cmd == "prune":

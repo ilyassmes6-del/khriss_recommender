@@ -18,6 +18,7 @@ from typing import Optional
 
 from pydantic import ValidationError
 
+from app import retrieval
 from app.config import settings
 from app.models import OutfitAttributes, ProductResult, RankerResponse
 
@@ -56,6 +57,7 @@ def rank_outfit(
     client=None,
     top_n: int = 12,
     per_category: int = _PER_CATEGORY,
+    size: str | None = None,
 ) -> list[ProductResult]:
     if not candidates:
         return []
@@ -91,6 +93,9 @@ def rank_outfit(
             if per_cat_count.get(cat, 0) >= per_category:
                 continue
             per_cat_count[cat] = per_cat_count.get(cat, 0) + 1
+        # Resolve add-to-cart to the size the shopper picked, not the product's
+        # default variant -- see retrieval.variant_for_size.
+        variant_id, chosen_size = retrieval.variant_for_size(c, size)
         results.append(
             ProductResult(
                 product_id=item.product_id,
@@ -98,8 +103,9 @@ def rank_outfit(
                 handle=c["handle"],
                 price=c.get("price"),
                 image_url=c.get("image_url"),
-                variant_id=c.get("variant_id"),
+                variant_id=variant_id,
                 category=cat,
+                size=chosen_size,
                 score=round(item.coherence, 4),
                 rationale=item.rationale,
             )

@@ -118,10 +118,62 @@
   color: var(--or);
 }
 
+/* ------------------------------------------------- size picker (hero) -- */
+.khriss__sizes {
+  margin: 1.8rem auto 0;
+  max-width: 30rem;
+}
+.khriss__sizes-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--gris-texte);
+  font-weight: 700;
+  margin-bottom: 0.7rem;
+}
+.khriss__size-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+.khriss__size {
+  min-width: 3rem;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--sable);
+  background: var(--blanc);
+  color: var(--noir);
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+.khriss__size:hover {
+  border-color: var(--or);
+}
+.khriss__size.is-active {
+  background: var(--noir);
+  border-color: var(--noir);
+  color: var(--ecru);
+}
+/* "Toutes" is the default, so it reads as a reset rather than a peer of the
+   numbers -- lighter until it is the one actually selected. */
+.khriss__size--any {
+  min-width: 0;
+  font-weight: 500;
+  color: var(--gris-texte);
+}
+.khriss__size--any.is-active {
+  color: var(--ecru);
+}
+
 /* ------------------------------------------------ upload (in the hero) -- */
 .khriss__upload {
   max-width: 30rem;
-  margin: 1.8rem auto 0;
+  margin: 1.4rem auto 0;
 }
 .khriss__drop {
   display: flex;
@@ -458,6 +510,19 @@
   color: var(--or-clair);
   font-weight: 600;
   margin-top: 0.35rem;
+}
+/* Only rendered for a sized piece, so the shopper can see the card is the
+   size they picked -- and it is absent on bags and jewellery, which have none. */
+.khriss__card-size {
+  display: inline-block;
+  margin-top: 0.4rem;
+  padding: 2px 8px;
+  border: 1px solid rgba(231, 211, 166, 0.35);
+  border-radius: 999px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--or-clair);
 }
 .khriss__rationale {
   font-size: 0.75rem;

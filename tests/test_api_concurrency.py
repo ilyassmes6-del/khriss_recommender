@@ -32,7 +32,7 @@ def slow_app(sqlite_db, monkeypatch):
 
     monkeypatch.setattr("app.main.get_store", lambda *a, **k: _FakeStore())
 
-    def blocking_recommend(image_bytes, llm_client=None):
+    def blocking_recommend(image_bytes, llm_client=None, size=None):
         entered.set()
         if not released.wait(timeout=10):
             raise AssertionError("recommendation was never released")

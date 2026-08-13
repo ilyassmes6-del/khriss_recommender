@@ -39,6 +39,8 @@
   data-khriss-t-found="{{ '%n% suggestions trouvées pour compléter ton look' | escape }}"
   data-khriss-t-similar="{{ 'Articles similaires' | escape }}"
   data-khriss-t-empty="{{ 'Aucun résultat pour cette photo. Essaie une autre prise de vue.' | escape }}"
+  data-khriss-t-empty-size="{{ 'Rien dans cette pointure pour cette photo. Essaie une autre pointure ou une autre prise de vue.' | escape }}"
+  data-khriss-t-in-size="{{ 'pointure %s%' | escape }}"
   data-khriss-t-error="{{ 'Une erreur est survenue. Veuillez réessayer.' | escape }}"
   data-khriss-t-match="{{ 'Match' | escape }}"
   data-khriss-t-add="{{ 'Ajouter au panier' | escape }}"
@@ -67,6 +69,28 @@
           {% endif %}
         </p>
       {% endif %}
+      {% comment %}
+        Size comes before the photo: it is what the shopper knows without
+        thinking, and picking it first means the very first set of suggestions
+        is already wearable. Optional -- leaving it unset returns the whole
+        catalog, so someone shopping for a bag is never blocked by a shoe size.
+      {% endcomment %}
+      {% if block.settings.sizes != blank %}
+        <div class="khriss__sizes">
+          <div class="khriss__sizes-label">{{ block.settings.sizes_label }}</div>
+          <div class="khriss__size-list" role="group" aria-label="{{ block.settings.sizes_label | escape }}">
+            {% assign size_list = block.settings.sizes | split: ',' %}
+            {% for s in size_list %}
+              {% assign size = s | strip %}
+              {% if size != blank %}
+                <button type="button" class="khriss__size" data-size="{{ size | escape }}" aria-pressed="false">{{ size }}</button>
+              {% endif %}
+            {% endfor %}
+            <button type="button" class="khriss__size khriss__size--any is-active" data-size="" aria-pressed="true">{{ block.settings.sizes_any }}</button>
+          </div>
+        </div>
+      {% endif %}
+
       {% comment %}
         The upload lives here, directly under "Envoie une photo. Complète ton
         look." -- that line is the call to action, so the control that answers
@@ -205,6 +229,25 @@
       "id": "tagline_em",
       "label": "Accroche (partie dorée en italique)",
       "default": "Complète ton look."
+    },
+    {
+      "type": "text",
+      "id": "sizes_label",
+      "label": "Titre du sélecteur de pointure",
+      "default": "Ta pointure"
+    },
+    {
+      "type": "text",
+      "id": "sizes",
+      "label": "Pointures proposées",
+      "info": "Séparées par des virgules, dans l'ordre d'affichage. Laisser vide pour masquer le sélecteur.",
+      "default": "36, 37, 38, 39, 40, 41"
+    },
+    {
+      "type": "text",
+      "id": "sizes_any",
+      "label": "Option « toutes les pointures »",
+      "default": "Toutes"
     },
     {
       "type": "text",

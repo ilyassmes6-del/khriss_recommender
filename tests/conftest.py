@@ -76,6 +76,14 @@ class FakeVectorStore:
     def upsert_product_vectors(self, product_id, vectors, payload):
         self._data[product_id] = [(np.asarray(v, dtype="float32"), dict(payload)) for v in vectors]
 
+    def set_product_payload(self, product_id, payload):
+        recs = self._data.get(product_id)
+        if not recs:
+            return False
+        for _vec, existing in recs:
+            existing.update(payload)
+        return True
+
     def delete_product(self, product_id):
         self._data.pop(product_id, None)
 
@@ -83,7 +91,9 @@ class FakeVectorStore:
         recs = self._data.get(product_id)
         return recs[0][0] if recs else None
 
-    def search(self, query, limit, in_stock_only=True, over_fetch=4, category=None):
+    def search(
+        self, query, limit, in_stock_only=True, over_fetch=4, category=None, size=None
+    ):
         best: dict[str, tuple[float, dict]] = {}
         for pid, recs in self._data.items():
             for vec, payload in recs:
@@ -92,6 +102,9 @@ class FakeVectorStore:
                 # Mirrors the Qdrant payload filter: retrieval scopes every
                 # search to one category so types never rank against each other.
                 if category and payload.get("category") != category:
+                    continue
+                # Mirrors the keyword-array match on sizes_in_stock.
+                if size and size not in (payload.get("sizes_in_stock") or []):
                     continue
                 score = float(np.asarray(query, dtype="float32") @ vec)
                 if pid not in best or score > best[pid][0]:

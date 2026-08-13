@@ -15,6 +15,7 @@
 (function () {
   // Category display order + labels come from the block; drives the row order.
   const CATEGORY_ORDER = ["shoes", "bags", "jewelry"];
+  const SIZE_KEY = "khriss:size";
 
   const roots = document.querySelectorAll(".khriss");
   roots.forEach(initWidget);
@@ -31,6 +32,7 @@
 
     const fileInput = root.querySelector(".khriss__file");
     const drop = root.querySelector(".khriss__drop");
+    const sizeButtons = root.querySelectorAll(".khriss__size");
     const preview = root.querySelector(".khriss__preview");
     const previewImg = root.querySelector(".khriss__preview-img");
     const status = root.querySelector(".khriss__status");
@@ -41,6 +43,54 @@
 
     let lastResponse = null;
     let pending = false;
+    let size = readStoredSize();
+
+    /* --- size ---------------------------------------------------------- */
+    // Remembered across visits: a shopper's shoe size is the one thing about
+    // them that does not change between sessions, and asking again every time
+    // is the kind of friction that gets the picker ignored.
+    function readStoredSize() {
+      try {
+        return window.localStorage.getItem(SIZE_KEY) || "";
+      } catch (e) {
+        return ""; // private mode / storage disabled
+      }
+    }
+
+    function storeSize(value) {
+      try {
+        if (value) window.localStorage.setItem(SIZE_KEY, value);
+        else window.localStorage.removeItem(SIZE_KEY);
+      } catch (e) {
+        /* not worth breaking the widget over */
+      }
+    }
+
+    function setSize(value) {
+      size = value || "";
+      sizeButtons.forEach((b) => {
+        const on = (b.dataset.size || "") === size;
+        b.classList.toggle("is-active", on);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+      storeSize(size);
+    }
+
+    sizeButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setSize(btn.dataset.size || "");
+        // Re-run against the new size rather than leaving stale results that
+        // no longer match the chip the shopper just pressed.
+        if (lastFile && !pending) handleFile(lastFile);
+      });
+    });
+    // Restore the remembered choice, but only if that size is still offered.
+    if (size && ![...sizeButtons].some((b) => (b.dataset.size || "") === size)) {
+      size = "";
+    }
+    setSize(size);
+
+    let lastFile = null;
 
     fileInput.addEventListener("change", () => {
       const file = fileInput.files && fileInput.files[0];
@@ -74,6 +124,7 @@
     async function handleFile(file) {
       if (pending) return; // ignore a second pick while one is in flight
       pending = true;
+      lastFile = file; // so a size change can re-run the same photo
 
       previewImg.src = URL.createObjectURL(file);
       preview.hidden = false;
@@ -93,7 +144,7 @@
       showSkeletons();
 
       try {
-        const data = await postImage(api, file);
+        const data = await postImage(api, file, size);
         lastResponse = data;
         render(data);
       } catch (err) {
@@ -166,7 +217,7 @@
       } else {
         // Nothing found: say so where the shopper already is, next to the photo
         // they just sent, rather than sending them to an empty panel.
-        setStatus(t.empty);
+        setStatus(size ? t.emptySize : t.empty);
       }
     }
 
@@ -241,7 +292,9 @@
     function showEmpty() {
       const p = document.createElement("p");
       p.className = "khriss__empty";
-      p.textContent = t.empty;
+      // With a size set, "no results" usually means "none in this size" -- say
+      // so, or the shopper retries photos when the fix is another size.
+      p.textContent = size ? t.emptySize : t.empty;
       resultsEl.appendChild(p);
     }
 
@@ -283,6 +336,7 @@
             <div class="khriss__card-title">${escapeHtml(p.title)}</div>
           </a>
           <div class="khriss__card-price">${escapeHtml(formatMoney(p.price, money))}</div>
+          ${p.size ? `<span class="khriss__card-size">${escapeHtml(t.inSize.replace("%s%", p.size))}</span>` : ""}
           ${mode === "outfit" && p.rationale ? `<p class="khriss__rationale">${escapeHtml(p.rationale)}</p>` : ""}
           <button type="button" class="khriss__add" ${p.variant_id ? "" : "disabled"}>${escapeHtml(t.add)}</button>
         </div>
@@ -326,6 +380,8 @@
       found: d.khrissTFound || "%n%", // %n% is replaced with the result count
       similar: d.khrissTSimilar,
       empty: d.khrissTEmpty,
+      emptySize: d.khrissTEmptySize || d.khrissTEmpty,
+      inSize: d.khrissTInSize || "%s%",
       error: d.khrissTError,
       match: d.khrissTMatch,
       add: d.khrissTAdd,
@@ -351,9 +407,11 @@
     return out === format ? `${amount} ${format}`.trim() : out;
   }
 
-  async function postImage(api, file) {
+  async function postImage(api, file, size) {
     const form = new FormData();
     form.append("image", file);
+    // Omitted entirely when unset, so the API keeps its no-filter default.
+    if (size) form.append("size", size);
     const res = await fetch(`${api}/recommend`, { method: "POST", body: form });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();

@@ -32,6 +32,28 @@ class IndexStats:
     pruned: int = 0
 
 
+@dataclass
+class RefreshStats:
+    refreshed: int = 0
+    not_indexed: int = 0
+    failed: int = 0
+
+
+def _stock_payload(product: dict) -> dict:
+    """The vector-store payload fields that track availability.
+
+    `sizes_in_stock` is a flat list rather than the full size map because Qdrant
+    filters on it: a keyword index over an array matches when any element does,
+    which is exactly the "comes in my size" question. The variant IDs behind
+    those sizes live in Postgres, where add-to-cart reads them.
+    """
+    sizes = product.get("sizes") or {}
+    return {
+        "in_stock": bool(product.get("in_stock", True)),
+        "sizes_in_stock": sorted(s for s, v in sizes.items() if v.get("available")),
+    }
+
+
 class Indexer:
     def __init__(
         self,
@@ -75,7 +97,7 @@ class Indexer:
             "formality": attrs.formality,
             "season": attrs.season.value if attrs.season else None,
             "dominant_colors": attrs.dominant_colors,
-            "in_stock": bool(product.get("in_stock", True)),
+            **_stock_payload(product),
         }
         self.store.upsert_product_vectors(product["product_id"], vectors, payload)
 
@@ -91,11 +113,38 @@ class Indexer:
                 variant_id=product.get("variant_id"),
                 image_url=images[0],
                 in_stock=bool(product.get("in_stock", True)),
+                sizes=product.get("sizes") or {},
                 shoe_type=attrs.type_value(),
                 formality=attrs.formality,
                 season=attrs.season.value if attrs.season else None,
                 attributes=attrs.model_dump(mode="json"),
             )
+            session.commit()
+        return True
+
+    def refresh_metadata(self, product: dict) -> bool:
+        """Update stock and per-size availability without re-embedding.
+
+        Images are what make indexing expensive, and they are also what almost
+        never changes: stock moves daily, a product's photos do not. This path
+        touches only the Postgres row and the Qdrant payload, so refreshing the
+        whole catalog costs a Shopify page-through rather than a CLIP pass.
+
+        Returns False for a product that is not indexed yet -- it needs the full
+        `index_product` path, and silently "refreshing" it would leave a product
+        the shopper can never be shown.
+        """
+        pid = product["product_id"]
+        if not self.store.set_product_payload(pid, _stock_payload(product)):
+            return False
+        with db.get_session() as session:
+            obj = session.get(db.Product, pid)
+            if obj is None:
+                return False
+            obj.in_stock = bool(product.get("in_stock", True))
+            obj.sizes = product.get("sizes") or {}
+            obj.variant_id = product.get("variant_id")
+            obj.price = product.get("price")
             session.commit()
         return True
 
@@ -142,6 +191,33 @@ class Indexer:
 
         if prune:
             stats.pruned = self.prune(kept)
+        return stats
+
+    def refresh_all(
+        self,
+        products,
+        progress: Optional[Callable[[dict, bool], None]] = None,
+    ) -> RefreshStats:
+        """Refresh stock/size metadata across the feed, without re-embedding.
+
+        Deliberately does not consult the checkpoint: the checkpoint records
+        what has been *embedded*, and this pass is about the metadata attached
+        to those embeddings, which goes stale on its own schedule.
+        """
+        stats = RefreshStats()
+        for product in products:
+            try:
+                if self.refresh_metadata(product):
+                    stats.refreshed += 1
+                else:
+                    stats.not_indexed += 1
+            except Exception:
+                stats.failed += 1
+                if progress:
+                    progress(product, False)
+                continue
+            if progress:
+                progress(product, True)
         return stats
 
     def prune(self, keep_ids: set[str]) -> int:

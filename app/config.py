@@ -73,6 +73,18 @@ class Settings(BaseSettings):
     # --- Upload guard ---
     max_upload_bytes: int = 5 * 1024 * 1024  # 5 MB
 
+    # --- Sizes ---
+    # Which Shopify option names carry a shoe size. This catalog uses "Taille"
+    # (values 36-41); the others are here so a store that labels the axis
+    # differently works without a code change. Matched case-insensitively, and
+    # anything else (notably Shopify's "Title"/"Default Title" for a product
+    # with no options) is treated as sizeless.
+    size_option_names: str = "taille,size,pointure"
+
+    @property
+    def size_option_names_set(self) -> set[str]:
+        return {n.strip().lower() for n in self.size_option_names.split(",") if n.strip()}
+
     @field_validator("database_url")
     @classmethod
     def _pin_psycopg3_driver(cls, v: str) -> str:
