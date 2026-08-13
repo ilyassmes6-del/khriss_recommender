@@ -320,12 +320,24 @@ Run the indexer *inside* the deployed container, which already has torch and the
 CLIP weights:
 
 ```bash
-railway ssh -s api -- python indexer.py full
+railway ssh -s "$(railway status | awk '/^Service:/ {print $2}')" -- python indexer.py full
 ```
+
+`-s` takes the **service name**, which is whatever you called it when you created
+the service — not necessarily `api`. `railway status` prints it; the command
+above just reads it from there. Getting it wrong fails with a flat
+`Service 'api' not found` that says nothing about where the real name lives.
 
 Not `railway run` — that executes on your own machine with Railway's variables
 injected, so it needs the whole ML stack installed locally. `railway ssh` is the
 one that runs in the container.
+
+After a restock — or after any change to size/stock handling — refresh the
+metadata without re-embedding:
+
+```bash
+railway ssh -s "$(railway status | awk '/^Service:/ {print $2}')" -- python indexer.py refresh
+```
 
 Then confirm the service is live, and point the theme block's **khriss API base
 URL** at the same host:
