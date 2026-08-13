@@ -24,6 +24,7 @@ from tqdm import tqdm
 from app import db
 from app.config import settings
 from app.indexing import Indexer, clear_checkpoint
+from app.qdrant_store import get_store
 from app.shopify_client import ShopifyClient
 
 
@@ -61,8 +62,12 @@ def _refresh() -> None:
     """
     db.init_db()
     shop = ShopifyClient()
-    indexer = Indexer()
-    indexer.store.ensure_collection(dim=indexer.embedder.dim)
+    indexer = Indexer(store=get_store())
+    # Ensures the payload indexes, including sizes_in_stock on a collection
+    # built before that field existed. Deliberately without the embedder's dim:
+    # the collection already exists, so the width is never read, and asking for
+    # it would load CLIP for a pass that touches no vectors.
+    indexer.store.ensure_collection()
 
     bar = tqdm(desc="refreshing", unit="product")
 

@@ -55,6 +55,13 @@ def _stock_payload(product: dict) -> dict:
 
 
 class Indexer:
+    """Embeds products and keeps their metadata current.
+
+    The model is loaded lazily. `refresh_metadata` touches no images and no
+    vectors, so a stock/size refresh should not pay a CLIP load and a label-bank
+    build just to construct the object that performs it.
+    """
+
     def __init__(
         self,
         store: VectorStore | None = None,
@@ -62,10 +69,29 @@ class Indexer:
         extractor: AttributeExtractor | None = None,
         http: httpx.Client | None = None,
     ):
-        self.embedder = embedder or get_embedder()
-        self.store = store or get_store(dim=self.embedder.dim)
-        self.extractor = extractor or get_extractor()
+        self._embedder = embedder
+        self._store = store
+        self._extractor = extractor
         self.http = http or httpx.Client(timeout=30.0, follow_redirects=True)
+
+    @property
+    def embedder(self) -> Embedder:
+        if self._embedder is None:
+            self._embedder = get_embedder()
+        return self._embedder
+
+    @property
+    def store(self) -> VectorStore:
+        if self._store is None:
+            # get_store needs the vector width, which only the embedder knows.
+            self._store = get_store(dim=self.embedder.dim)
+        return self._store
+
+    @property
+    def extractor(self) -> AttributeExtractor:
+        if self._extractor is None:
+            self._extractor = get_extractor()
+        return self._extractor
 
     # --- single product ---------------------------------------------------
     def index_product(self, product: dict) -> bool:
